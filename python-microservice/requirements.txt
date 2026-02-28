@@ -1,0 +1,23 @@
+# Framework para a criação da API
+fastapi
+
+# Servidor para rodar a aplicação FastAPI
+uvicorn[standard]
+
+# Biblioteca para conexão com o WhatsApp Web
+wppconnect-lib
+
+# Para carregar variáveis de ambiente de um arquivo .env (boa prática)
+python-dotenv
+
+# Necessário para que o FastAPI possa manipular formulários e uploads de arquivos
+python-multipart
+
+# Biblioteca oficial do SendGrid para envio de e-mails
+sendgrid
+
+# Cliente Redis para Python
+redis
+
+# RQ (Redis Queue) para enfileiramento de tarefas
+rq

@@ -1,26 +1,79 @@
-
 version: '3.8'
 
 services:
-  # --- Serviço do Backend Principal (TypeScript) ---
-  typescript-backend:
-    build:
+  # Serviço principal da aplicação (Backend Node.js/TypeScript)
+  app:
+    build: 
       context: .
-      dockerfile: Dockerfile # Assumindo que você tem um Dockerfile na raiz para o seu app TS
-    ports:
-      - "3000:3000"
-    environment:
-      # Adicione aqui variáveis de ambiente para o serviço TS, se necessário
-      PYTHON_MICROSERVICE_URL: http://python-microservice:8000
-    depends_on:
-      - python-microservice
-
-  # --- Serviço do Microserviço de Análise (Python) ---
-  python-microservice:
-    build:
-      context: ./python_microservice
       dockerfile: Dockerfile
     ports:
-      - "8000:8000"
-    env_file:
-      - .env
+      - "${PORT:-3001}:${PORT:-3001}"
+    environment:
+      - PORT=${PORT:-3001}
+      - NODE_ENV=development
+      - DATA_CRAZY_API_URL=${DATA_CRAZY_API_URL}
+      - DATA_CRAZY_TOKEN=${DATA_CRAZY_TOKEN}
+      - COMDINHEIRO_API_KEY=${COMDINHEIRO_API_KEY}
+      - PYTHON_MICROSERVICE_URL=http://python-microservice:8000
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - .:/usr/src/app
+      - /usr/src/app/node_modules
+    depends_on:
+      - python-microservice
+    networks:
+      - finassist-net
+
+  # Microserviço de Comunicação (Python)
+  python-microservice:
+    build:
+      context: ./python-microservice
+      dockerfile: Dockerfile
+    environment:
+      - WPP_SESSION_NAME=BOT_FINASSIST
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY} # Chave para o SendGrid
+      - SENDER_EMAIL=${SENDER_EMAIL}         # E-mail remetente para o SendGrid
+      - REDIS_URL=redis://redis:6379      # URL para o Redis
+    volumes:
+      - whatsapp_session:/app/wppconnect/tokens
+    depends_on:
+      - redis # Garante que o Redis inicie antes
+    networks:
+      - finassist-net
+
+  # Novo serviço para o Worker da Fila RQ
+  rq-worker:
+    build:
+      context: ./python-microservice # Usa a mesma imagem do microserviço
+      dockerfile: Dockerfile
+    command: python worker.py # Sobrescreve o CMD do Dockerfile para rodar o worker
+    environment:
+      - WPP_SESSION_NAME=BOT_FINASSIST
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY}
+      - SENDER_EMAIL=${SENDER_EMAIL}
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - whatsapp_session:/app/wppconnect/tokens
+    depends_on:
+      - redis
+      - python-microservice # O worker precisa esperar pela API em alguns cenários
+    networks:
+      - finassist-net
+
+  # Serviço Redis para a Fila
+  redis:
+    image: "redis:alpine"
+    networks:
+      - finassist-net
+    volumes:
+      - redis_data:/data
+
+networks:
+  finassist-net:
+    driver: bridge
+
+volumes:
+  whatsapp_session:
+    driver: local
+  redis_data:
+    driver: local
