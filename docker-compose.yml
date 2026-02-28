@@ -22,7 +22,5 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
-    # Carrega as variáveis de ambiente do arquivo .env na raiz do projeto
-    # para que o Python possa acessar GROQ_API_KEY, etc.
     env_file:
       - .env
