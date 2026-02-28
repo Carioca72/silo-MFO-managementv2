@@ -1,3 +1,4 @@
+
 version: '3.8'
 
 services:
@@ -13,24 +14,15 @@ services:
       PYTHON_MICROSERVICE_URL: http://python-microservice:8000
     depends_on:
       - python-microservice
-    volumes:
-      - .:/usr/src/app
-      - /usr/src/app/node_modules # Garante que os node_modules do container sejam usados
 
-  # --- Microserviço de Análise (Python) ---
+  # --- Serviço do Microserviço de Análise (Python) ---
   python-microservice:
     build:
       context: ./python_microservice
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
-    environment:
-      # Adicione aqui chaves de API para Groq, Brasa, etc.
-      GROQ_API_KEY: ${GROQ_API_KEY} # Exemplo de como carregar segredos
-    volumes:
-      - ./python_microservice:/app
-
-# Definir redes se precisar de configurações de rede mais complexas
-# networks:
-#   app-network:
-#     driver: bridge
+    # Carrega as variáveis de ambiente do arquivo .env na raiz do projeto
+    # para que o Python possa acessar GROQ_API_KEY, etc.
+    env_file:
+      - .env

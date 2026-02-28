@@ -15,3 +15,9 @@ matplotlib
 pdfplumber
 # SDK para a API de inferência de IA ultra-rápida
 groq
+# SDK para a API da Brapi (dados de mercado brasileiro)
+brapi
+# Para dados de mercado globais e históricos
+yfinance
+# Para carregar variáveis de ambiente de arquivos .env
+python-dotenv
