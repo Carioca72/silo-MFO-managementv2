@@ -1,6 +1,17 @@
 import * as XLSX from 'xlsx';
 import { DetailedAsset, ProjectionResult } from '../../services/analysis/financialEngine';
 
+const safeDiv = (numerator: number, denominator: number, defaultValue: number = 0): number => {
+  if (denominator === 0 || !isFinite(denominator)) return defaultValue;
+  const result = numerator / denominator;
+  return isFinite(result) ? result : defaultValue;
+};
+
+const safeNumber = (value: any, defaultValue: number = 0): number => {
+  const num = Number(value);
+  return isFinite(num) ? num : defaultValue;
+};
+
 export const generateExcelReport = (
   currentAssets: DetailedAsset[],
   suggestedAssets: DetailedAsset[],
@@ -31,35 +42,55 @@ export const generateExcelReport = (
       'Atual': currentProjection.aggregated.totalNominalReturn,
       'Novo': suggestedProjection.aggregated.totalNominalReturn,
       'Δ R$': suggestedProjection.aggregated.totalNominalReturn - currentProjection.aggregated.totalNominalReturn,
-      'Δ %': (suggestedProjection.aggregated.totalNominalReturn - currentProjection.aggregated.totalNominalReturn) / currentProjection.aggregated.totalNominalReturn
+      'Δ %': safeDiv(
+        suggestedProjection.aggregated.totalNominalReturn - currentProjection.aggregated.totalNominalReturn,
+        currentProjection.aggregated.totalNominalReturn,
+        0
+      )
     },
     {
       'Indicador': 'Custos',
       'Atual': currentProjection.aggregated.totalCosts,
       'Novo': suggestedProjection.aggregated.totalCosts,
       'Δ R$': suggestedProjection.aggregated.totalCosts - currentProjection.aggregated.totalCosts,
-      'Δ %': (suggestedProjection.aggregated.totalCosts - currentProjection.aggregated.totalCosts) / currentProjection.aggregated.totalCosts
+      'Δ %': safeDiv(
+        suggestedProjection.aggregated.totalCosts - currentProjection.aggregated.totalCosts,
+        currentProjection.aggregated.totalCosts,
+        0
+      )
     },
     {
       'Indicador': 'IR',
       'Atual': currentProjection.aggregated.totalIR,
       'Novo': suggestedProjection.aggregated.totalIR,
       'Δ R$': suggestedProjection.aggregated.totalIR - currentProjection.aggregated.totalIR,
-      'Δ %': (suggestedProjection.aggregated.totalIR - currentProjection.aggregated.totalIR) / currentProjection.aggregated.totalIR
+      'Δ %': safeDiv(
+        suggestedProjection.aggregated.totalIR - currentProjection.aggregated.totalIR,
+        currentProjection.aggregated.totalIR,
+        0
+      )
     },
     {
       'Indicador': 'Retorno Líquido',
       'Atual': currentProjection.aggregated.totalNetReturn,
       'Novo': suggestedProjection.aggregated.totalNetReturn,
       'Δ R$': suggestedProjection.aggregated.totalNetReturn - currentProjection.aggregated.totalNetReturn,
-      'Δ %': (suggestedProjection.aggregated.totalNetReturn - currentProjection.aggregated.totalNetReturn) / currentProjection.aggregated.totalNetReturn
+      'Δ %': safeDiv(
+        suggestedProjection.aggregated.totalNetReturn - currentProjection.aggregated.totalNetReturn,
+        currentProjection.aggregated.totalNetReturn,
+        0
+      )
     },
     {
       'Indicador': 'Sharpe Ratio',
       'Atual': currentProjection.aggregated.sharpeRatio,
       'Novo': suggestedProjection.aggregated.sharpeRatio,
       'Δ R$': suggestedProjection.aggregated.sharpeRatio - currentProjection.aggregated.sharpeRatio,
-      'Δ %': (suggestedProjection.aggregated.sharpeRatio - currentProjection.aggregated.sharpeRatio) / currentProjection.aggregated.sharpeRatio
+      'Δ %': safeDiv(
+        suggestedProjection.aggregated.sharpeRatio - currentProjection.aggregated.sharpeRatio,
+        currentProjection.aggregated.sharpeRatio,
+        0
+      )
     }
   ];
 

@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  # --- Serviço do Backend Principal (TypeScript) ---
+  typescript-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile # Assumindo que você tem um Dockerfile na raiz para o seu app TS
+    ports:
+      - "3000:3000"
+    environment:
+      # Adicione aqui variáveis de ambiente para o serviço TS, se necessário
+      PYTHON_MICROSERVICE_URL: http://python-microservice:8000
+    depends_on:
+      - python-microservice
+    volumes:
+      - .:/usr/src/app
+      - /usr/src/app/node_modules # Garante que os node_modules do container sejam usados
+
+  # --- Microserviço de Análise (Python) ---
+  python-microservice:
+    build:
+      context: ./python_microservice
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      # Adicione aqui chaves de API para Groq, Brasa, etc.
+      GROQ_API_KEY: ${GROQ_API_KEY} # Exemplo de como carregar segredos
+    volumes:
+      - ./python_microservice:/app
+
+# Definir redes se precisar de configurações de rede mais complexas
+# networks:
+#   app-network:
+#     driver: bridge

@@ -1,5 +1,10 @@
 import { Asset } from '../../types/asset';
 
+const safeNumber = (value: any, defaultValue: number = 0): number => {
+  const num = Number(value);
+  return isFinite(num) ? num : defaultValue;
+};
+
 export interface DetailedAsset extends Asset {
   institution: string;
   liquidity: number; // days
@@ -115,6 +120,27 @@ export class FinancialEngine {
         sharpeRatio
       }
     };
+  }
+
+  public calculateAssetCosts(asset: DetailedAsset): {
+    annualCost: number;
+    monthlyCost: number;
+  } {
+    const annualCost = (asset.value * asset.adminFee) / 100;
+    const monthlyCost = annualCost / 12;
+    
+    return {
+      annualCost: safeNumber(annualCost),
+      monthlyCost: safeNumber(monthlyCost)
+    };
+  }
+
+  public calculateNetReturn(asset: DetailedAsset, grossReturn: number): number {
+    const ir = grossReturn * (asset.taxRate / 100);
+    const adminFee = (asset.value * asset.adminFee) / 100 / 12; // Monthly
+    const netReturn = grossReturn - ir - adminFee;
+    
+    return safeNumber(netReturn);
   }
 }
 

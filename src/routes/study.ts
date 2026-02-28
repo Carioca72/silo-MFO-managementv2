@@ -1,5 +1,5 @@
 import express from 'express';
-import { marketDataService } from '../services/market/marketDataService.js';
+import { marketDataAggregator } from '../services/market/marketDataAggregator.js';
 import { markowitzService } from '../services/math/markowitz.js';
 import { excelGenerator } from '../services/reports/excelGenerator.js';
 
@@ -13,8 +13,8 @@ router.get('/market-data', async (req, res) => {
   }
 
   try {
-    const data = await marketDataService.getBatchData(tickers);
-    res.json(data);
+    const quotes = await marketDataAggregator.getMonthlyQuotes(tickers);
+    res.json(quotes);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

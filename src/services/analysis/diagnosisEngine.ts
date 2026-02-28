@@ -1,54 +1,58 @@
 import { DetailedAsset } from './financialEngine';
 
-export interface Diagnosis {
-  rule: string;
-  message: string;
-  severity: 'high' | 'medium' | 'low';
-}
-
 export class DiagnosisEngine {
   
-  public runDiagnosis(assets: DetailedAsset[]): Diagnosis[] {
-    const diagnoses: Diagnosis[] = [];
-    const totalValue = assets.reduce((sum, a) => sum + a.value, 0);
+  checkForConcentration(portfolio: DetailedAsset[]): {
+    hasConcentration: boolean;
+    text: string;
+    offendingAssets: string[];
+  } {
+    const totalValue = portfolio.reduce((sum, a) => sum + a.value, 0);
+    const offendingAssets: string[] = [];
     
-    // Rule 1: Concentration (> 20%)
-    const concentratedAssets = assets.filter(a => (a.value / totalValue) > 0.20);
-    if (concentratedAssets.length > 0) {
-      diagnoses.push({
-        rule: 'Concentração',
-        message: 'Carteira apresenta concentração excessiva (oversized) em um único emissor.',
-        severity: 'high'
-      });
+    portfolio.forEach(asset => {
+      const weight = asset.value / totalValue;
+      if (weight > 0.20) { // > 20%
+        offendingAssets.push(asset.titulo);
+      }
+    });
+    
+    if (offendingAssets.length > 0) {
+      return {
+        hasConcentration: true,
+        text: `Observamos uma concentração elevada em ${offendingAssets.join(', ')}, o que representa um risco não diversificado (Oversized). Sugerimos a re-alocação para mitigar este risco.`,
+        offendingAssets
+      };
     }
     
-    // Rule 2: Liquidity (> 40% daily)
-    // Assuming liquidity <= 1 means daily
-    const liquidAssets = assets.filter(a => a.liquidity <= 1);
-    const liquidValue = liquidAssets.reduce((sum, a) => sum + a.value, 0);
-    if ((liquidValue / totalValue) > 0.40) {
-      diagnoses.push({
-        rule: 'Liquidez',
-        message: 'Elevada exposição em liquidez diária dificulta superar o CDI.',
-        severity: 'medium'
-      });
+    return {
+      hasConcentration: false,
+      text: '',
+      offendingAssets: []
+    };
+  }
+  
+  checkForLiquidityDrag(portfolio: DetailedAsset[]): {
+    hasLiquidityDrag: boolean;
+    text: string;
+    liquidityPercentage: number;
+  } {
+    const totalValue = portfolio.reduce((sum, a) => sum + a.value, 0);
+    const liquidAssets = portfolio.filter(a => a.liquidity === 0); // D+0
+    const liquidityPercentage = liquidAssets.reduce((sum, a) => sum + a.value, 0) / totalValue;
+    
+    if (liquidityPercentage > 0.40) { // > 40%
+      return {
+        hasLiquidityDrag: true,
+        text: `A carteira possui um percentual elevado de ativos com liquidez diária (${(liquidityPercentage * 100).toFixed(1)}%), o que pode dificultar a obtenção de retornos acima do CDI no longo prazo. Avaliaremos oportunidades com prazos maiores e rentabilidade superior.`,
+        liquidityPercentage
+      };
     }
     
-    // Rule 3: Single Issuer
-    // Check for duplicate institutions or specific issuer logic
-    // Assuming 'institution' field is populated
-    const issuers = assets.map(a => a.institution);
-    const uniqueIssuers = new Set(issuers);
-    if (uniqueIssuers.size === 1 && assets.length > 1) {
-       diagnoses.push({
-        rule: 'Emissor Único',
-        message: 'Carteira possui ativos de emissor único (single name), indicando potencial conflito de interesse.',
-        severity: 'high'
-      });
-    }
-    
-    return diagnoses;
+    return {
+      hasLiquidityDrag: false,
+      text: '',
+      liquidityPercentage
+    };
   }
 }
-
-export const diagnosisEngine = new DiagnosisEngine();

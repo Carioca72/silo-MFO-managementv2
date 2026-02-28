@@ -1,0 +1,17 @@
+fastapi
+uvicorn[standard]
+pandas
+# Para extrair dados financeiros da B3, CVM, etc.
+brasa
+# Para buscar dados macroeconômicos e de câmbio do Banco Central
+python-bcb
+# Para otimização de portfólio (Markowitz)
+PyPortfolioOpt
+# Para gerar gráficos e estatísticas de performance
+QuantStats
+# Para plotar os gráficos (como a Fronteira Eficiente)
+matplotlib
+# Para extrair dados de documentos PDF
+pdfplumber
+# SDK para a API de inferência de IA ultra-rápida
+groq
