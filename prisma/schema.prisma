@@ -1,0 +1,57 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  name      String?
+  studies   PortfolioStudy[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PortfolioStudy {
+  id              Int      @id @default(autoincrement())
+  userId          Int?
+  user            User?    @relation(fields: [userId], references: [id])
+  
+  tickers         String[] // Array of tickers
+  weights         Json     // Map of ticker -> weight
+  benchmark       String   // CDI or IBOVESPA
+  targetReturn    Float?
+  
+  // Expected Metrics (Ex-Ante)
+  expectedReturn  Float
+  volatility      Float
+  sharpeRatio     Float
+  
+  // Backtest Metrics (Ex-Post)
+  backtestReturn  Float
+  maxDrawdown     Float
+  
+  createdAt       DateTime @default(now())
+  
+  snapshots       AssetSnapshot[]
+}
+
+model AssetSnapshot {
+  id              Int            @id @default(autoincrement())
+  studyId         Int
+  study           PortfolioStudy @relation(fields: [studyId], references: [id])
+  
+  ticker          String
+  price           Float
+  currency        String         @default("BRL")
+  fxRate          Float          @default(1.0) // USD/BRL rate at snapshot time
+  
+  createdAt       DateTime       @default(now())
+}
