@@ -21,3 +21,16 @@ redis
 
 # RQ (Redis Queue) para enfileiramento de tarefas
 rq
+
+# --- NOVAS DEPENDÊNCIAS (Fase 4) ---
+
+# Para OCR
+pytesseract # Wrapper do Tesseract OCR
+Pillow      # Manipulação de imagens
+poppler-utils # Utilizado pelo pdf2image
+pdf2image   # Converte PDFs em imagens para o OCR
+
+# Para Coleta de Dados de Mercado
+yfinance    # Yahoo Finance
+requests    # Para requisições HTTP (API da Brapi)
+pandas      # Para manipulação de dados, especialmente séries temporais

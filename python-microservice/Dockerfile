@@ -1,22 +1,25 @@
-# Usar uma imagem oficial do Python como base
+# Usa uma imagem base do Python 3.9
 FROM python:3.9-slim
 
-# Definir o diretório de trabalho dentro do container
+# Define o diretório de trabalho dentro do container
 WORKDIR /app
 
-# Copiar o arquivo de dependências para o diretório de trabalho
-COPY requirements.txt ./
+# --- Instalação de Dependências do Sistema ---
+# Atualiza o gerenciador de pacotes e instala o Tesseract OCR, Poppler (para pdf2image) e Git
+RUN apt-get update && apt-get install -y tesseract-ocr poppler-utils git
 
-# Instalar as dependências definidas no requirements.txt
-# O --no-cache-dir garante que não haverá cache desnecessário, mantendo a imagem leve
+# Copia o arquivo de dependências do Python para o container
+COPY ./requirements.txt /app/requirements.txt
+
+# Instala as dependências do Python
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copiar todo o código da aplicação para o diretório de trabalho
-COPY . .
+# Copia todo o código da aplicação para o diretório de trabalho
+COPY . /app
 
-# Expor a porta 8000, que é a porta padrão do FastAPI/Uvicorn
+# Expõe a porta 8000 para que a API FastAPI possa ser acessada
 EXPOSE 8000
 
-# Comando para iniciar a aplicação quando o container for executado
-# Ele inicia o servidor Uvicorn, apontando para o objeto 'app' no arquivo 'main.py'
+# Comando padrão para iniciar a aplicação quando o container for executado
+# Inicia o servidor Uvicorn, tornando a API acessível
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

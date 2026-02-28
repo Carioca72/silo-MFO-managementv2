@@ -1,103 +1,81 @@
+import { Router, Request, Response } from 'express';
+import { reportGenerator } from '../services/reportGenerator';
+import { prisma } from '../prisma/client'; // Supondo que o prisma client está configurado
 
-import express from 'express';
-import multer from 'multer';
-import { pythonAgentService } from '../services/ai/pythonAgentService.js';
-import { marketDataAggregator } from '../services/market/marketDataAggregator.js';
-// Otimizador de Markowitz refatorado sendo importado
-import { portfolioOptimizer } from '../services/math/portfolioOptimizer.js';
-import { excelGenerator } from '../services/reports/excelGenerator.js';
+const router = Router();
 
-const router = express.Router();
-
-const storage = multer.memoryStorage();
-const upload = multer({ 
-  storage: storage,
-  limits: { fileSize: 10 * 1024 * 1024 },
+// Mock de dados, pois não temos a busca do estudo implementada
+const getMockStudyData = (studyId: string) => ({
+    clientName: "Cliente Exemplo",
+    comparison: {
+        current: { totalReturn: 5000, volatility: 0.15, sharpe: 0.5, finalBalance: 105000 },
+        new: { totalReturn: 8000, volatility: 0.12, sharpe: 0.9, finalBalance: 108000 },
+        delta: { 
+            totalReturn: 3000, 
+            volatility: -0.03, 
+            sharpe: 0.4, 
+            finalBalance: 3000,
+            totalReturnPct: 60,
+            volatilityPct: -20,
+            sharpePct: 80
+        },
+    },
+    projection: Array.from({ length: 12 }, (_, i) => ({ month: i + 1, balance: 100000 + i * 500 }))
 });
 
-// POST /api/study/upload-and-analyze
-router.post('/upload-and-analyze', upload.single('portfolioFile'), async (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: 'Nenhum arquivo enviado. O arquivo deve ser enviado no campo \'portfolioFile\'.' });
-  }
+/**
+ * @route   GET /api/study/:id/export/pdf
+ * @desc    Gera e retorna um relatório de estudo de carteira em PDF.
+ * @access  Public
+ */
+router.get('/:id/export/pdf', async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        // TODO: Substituir o mock pela busca real dos dados do estudo no banco de dados
+        // const studyData = await prisma.study.findUnique({ where: { id } });
+        const studyData = getMockStudyData(id);
 
-  try {
-    const result = await pythonAgentService.analyzePortfolioFile(
-      req.file.buffer,
-      req.file.originalname,
-      req.file.mimetype
-    );
-    res.json(result);
-  } catch (error: any) {
-    // Erros do Python Agent podem ser erros de servidor ou de input
-    res.status(500).json({ error: error.message });
-  }
+        if (!studyData) {
+            return res.status(404).json({ error: 'Estudo não encontrado.' });
+        }
+
+        const pdfBuffer = await reportGenerator.generatePdf(studyData);
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename=estudo_carteira_${id}.pdf`);
+        res.send(pdfBuffer);
+
+    } catch (error) {
+        console.error("Erro ao gerar PDF:", error);
+        res.status(500).send('Erro interno ao gerar o relatório em PDF.');
+    }
 });
 
-// GET /api/study/market-data?tickers=PETR4,VALE3
-router.get('/market-data', async (req, res) => {
-  const tickers = (req.query.tickers as string)?.split(',');
-  if (!tickers || tickers.length === 0) {
-    return res.status(400).json({ error: 'Tickers são obrigatórios' });
-  }
+/**
+ * @route   GET /api/study/:id/export/csv
+ * @desc    Gera e retorna um relatório de estudo de carteira em CSV.
+ * @access  Public
+ */
+router.get('/:id/export/csv', async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        // TODO: Substituir o mock pela busca real dos dados do estudo no banco de dados
+        const studyData = getMockStudyData(id);
 
-  try {
-    const quotes = await marketDataAggregator.getMonthlyQuotes(tickers);
-    res.json(quotes);
-  } catch (error: any) {
-    res.status(500).json({ error: `Erro interno do servidor: ${error.message}` });
-  }
-});
+        if (!studyData) {
+            return res.status(404).json({ error: 'Estudo não encontrado.' });
+        }
 
-// POST /api/study/optimize
-// Este endpoint agora usa diretamente o portfolioOptimizer refatorado.
-router.post('/optimize', async (req, res) => {
-  const { assets, riskFreeRate, targetReturn } = req.body;
+        const csvData = reportGenerator.generateCsv(studyData);
 
-  if (!assets || !Array.isArray(assets) || assets.length === 0) {
-      return res.status(400).json({ message: 'O campo \'assets\' é obrigatório e deve ser um array não vazio.' });
-  }
-  if (typeof riskFreeRate !== 'number') {
-      return res.status(400).json({ message: 'O campo \'riskFreeRate\' é obrigatório e deve ser um número.' });
-  }
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename=estudo_carteira_${id}.csv`);
+        res.send(csvData);
 
-  try {
-    // Chamada direta para o novo otimizador robusto
-    const scenarios = await portfolioOptimizer.optimize(assets, riskFreeRate, targetReturn);
-    res.json(scenarios);
-  } catch (error: any) {
-    // Se for um erro lançado pela nossa validação (falta de dados, etc.)
-    // Retornamos 422 - Unprocessable Entity
-    // Este é o comportamento "fail-fast" que queríamos.
-    console.error(`Falha na otimização de portfólio: ${error.message}`);
-    res.status(422).json({ 
-        error: "A otimização falhou devido a dados de entrada inválidos ou insuficientes.",
-        details: error.message // A mensagem de erro específica do otimizador
-    });
-  }
-});
-
-// POST /api/study/generate-excel
-router.post('/generate-excel', async (req, res) => {
-  try {
-    const buffer = await excelGenerator.generateStudyExcel(req.body);
-    
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename=estudo_${Date.now()}.xlsx`);
-    res.send(buffer);
-  } catch (error: any) {
-    res.status(500).json({ error: `Erro ao gerar o arquivo Excel: ${error.message}` });
-  }
-});
-
-// GET /api/study/models
-router.get('/models', (req, res) => {
-  const models = [
-    { id: 'conservador', name: 'Conservador (CDI+)', description: 'Foco em preservação de capital e liquidez.', allocation: [{ class: 'Renda Fixa Pós', weight: 0.60 }, { class: 'Renda Fixa Pré', weight: 0.20 }, { class: 'Inflação', weight: 0.20 }] },
-    { id: 'moderado', name: 'Moderado (Multimercado)', description: 'Equilíbrio entre risco e retorno.', allocation: [{ class: 'Renda Fixa Pós', weight: 0.40 }, { class: 'Multimercado', weight: 0.30 }, { class: 'Ações', weight: 0.15 }, { class: 'Internacional', weight: 0.15 }] },
-    { id: 'arrojado', name: 'Arrojado (Equity)', description: 'Maximização de retorno no longo prazo.', allocation: [{ class: 'Renda Fixa', weight: 0.20 }, { class: 'Ações Brasil', weight: 0.40 }, { class: 'Ações Global', weight: 0.30 }, { class: 'Alternativos', weight: 0.10 }] }
-  ];
-  res.json(models);
+    } catch (error) {
+        console.error("Erro ao gerar CSV:", error);
+        res.status(500).send('Erro interno ao gerar o relatório em CSV.');
+    }
 });
 
 export default router;

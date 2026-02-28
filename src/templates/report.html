@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Estudo de Carteira</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; color: #333; }
+        h1 { color: #003366; }
+        h2 { color: #0056b3; border-bottom: 2px solid #0056b3; padding-bottom: 5px; }
+        .header { text-align: center; margin-bottom: 40px; }
+        .header h1 { font-size: 28px; }
+        .header p { font-size: 18px; color: #666; }
+        .section { margin-bottom: 30px; }
+        .summary-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        .summary-table th, .summary-table td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+        .summary-table th { background-color: #f2f2f2; font-weight: bold; }
+        .highlight-positive { color: green; }
+        .highlight-negative { color: red; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>Estudo de Otimização de Carteira</h1>
+        <p>Preparado para: <strong>{{clientName}}</strong></p>
+    </div>
+
+    <div class="section">
+        <h2>Análise Comparativa de Cenários</h2>
+        <p>A tabela a seguir apresenta uma comparação direta entre a carteira atual e o novo cenário otimizado.</p>
+        <table class="summary-table">
+            <thead>
+                <tr>
+                    <th>Indicador</th>
+                    <th>Carteira Atual</th>
+                    <th>Novo Cenário</th>
+                    <th>Variação (Δ)</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Retorno Líquido Total (12m)</td>
+                    <td>R$ {{current_total_return}}</td>
+                    <td>R$ {{new_total_return}}</td>
+                    <td class="{{delta_return_class}}">{{delta_total_return}}</td>
+                </tr>
+                <tr>
+                    <td>Volatilidade Anualizada</td>
+                    <td>{{current_volatility}}%</td>
+                    <td>{{new_volatility}}%</td>
+                    <td class="{{delta_volatility_class}}">{{delta_volatility}}%</td>
+                </tr>
+                <tr>
+                    <td>Índice de Sharpe</td>
+                    <td>{{current_sharpe}}</td>
+                    <td>{{new_sharpe}}</td>
+                    <td class="{{delta_sharpe_class}}">{{delta_sharpe}}</td>
+                </tr>
+                 <tr>
+                    <td>Saldo Final Estimado</td>
+                    <td>R$ {{current_final_balance}}</td>
+                    <td>R$ {{new_final_balance}}</td>
+                    <td class="{{delta_balance_class}}">{{delta_final_balance}}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+</body>
+</html>

@@ -16,6 +16,7 @@ services:
       - COMDINHEIRO_API_KEY=${COMDINHEIRO_API_KEY}
       - PYTHON_MICROSERVICE_URL=http://python-microservice:8000
       - REDIS_URL=redis://redis:6379
+      - BRAPI_TOKEN=${BRAPI_TOKEN} # Adicionado para a API de dados de mercado
     volumes:
       - .:/usr/src/app
       - /usr/src/app/node_modules
@@ -24,39 +25,42 @@ services:
     networks:
       - finassist-net
 
-  # Microserviço de Comunicação (Python)
+  # Microserviço de Comunicação e Dados (Python)
   python-microservice:
     build:
       context: ./python-microservice
       dockerfile: Dockerfile
     environment:
       - WPP_SESSION_NAME=BOT_FINASSIST
-      - SENDGRID_API_KEY=${SENDGRID_API_KEY} # Chave para o SendGrid
-      - SENDER_EMAIL=${SENDER_EMAIL}         # E-mail remetente para o SendGrid
-      - REDIS_URL=redis://redis:6379      # URL para o Redis
-    volumes:
-      - whatsapp_session:/app/wppconnect/tokens
-    depends_on:
-      - redis # Garante que o Redis inicie antes
-    networks:
-      - finassist-net
-
-  # Novo serviço para o Worker da Fila RQ
-  rq-worker:
-    build:
-      context: ./python-microservice # Usa a mesma imagem do microserviço
-      dockerfile: Dockerfile
-    command: python worker.py # Sobrescreve o CMD do Dockerfile para rodar o worker
-    environment:
-      - WPP_SESSION_NAME=BOT_FINASSIST
       - SENDGRID_API_KEY=${SENDGRID_API_KEY}
       - SENDER_EMAIL=${SENDER_EMAIL}
       - REDIS_URL=redis://redis:6379
+      - BRAPI_TOKEN=${BRAPI_TOKEN} # Adicionado para a API de dados de mercado
     volumes:
       - whatsapp_session:/app/wppconnect/tokens
+      - ./python-microservice/tmp:/app/tmp # Volume compartilhado para arquivos temporários
     depends_on:
       - redis
-      - python-microservice # O worker precisa esperar pela API em alguns cenários
+    networks:
+      - finassist-net
+
+  # Worker da Fila RQ
+  rq-worker:
+    build:
+      context: ./python-microservice
+    command: python worker.py
+    environment:
+      - WPP_SESSION_NAME=BOT_FINASSIST_WORKER
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY}
+      - SENDER_EMAIL=${SENDER_EMAIL}
+      - REDIS_URL=redis://redis:6379
+      - BRAPI_TOKEN=${BRAPI_TOKEN} # Adicionado para a API de dados de mercado
+    volumes:
+      - whatsapp_session:/app/wppconnect/tokens
+      - ./python-microservice/tmp:/app/tmp # Volume compartilhado para arquivos temporários
+    depends_on:
+      - redis
+      - python-microservice
     networks:
       - finassist-net
 
@@ -77,3 +81,30 @@ volumes:
     driver: local
   redis_data:
     driver: local
+# 1. Configurações da Aplicação Principal (Node.js)
+#----------------------------------------------------
+# Porta em que o backend Node.js irá rodar. O padrão é 3001.
+PORT=3001
+
+# Chave da API para o serviço "Data Crazy" (usado nos prompts originais)
+DATA_CRAZY_API_URL=https://api.datacrazy.com/
+DATA_CRAZY_TOKEN=SUA_CHAVE_DATACRAZY_AQUI
+
+
+# 2. Configurações do Microserviço (Python)
+#----------------------------------------------------
+
+# --- E-mail (SendGrid) ---
+# Sua chave de API do SendGrid para permitir o envio de e-mails.
+SENDGRID_API_KEY=SG.SUA_CHAVE_SENDGRID_AQUI
+
+# O endereço de e-mail que aparecerá como remetente.
+SENDER_EMAIL=rafaelfelix@silomfo.com
+
+
+# --- Dados de Mercado (Brapi) ---
+# Seu token da API da Brapi para buscar dados de ativos brasileiros.
+BRAPI_TOKEN=SEU_TOKEN_BRAPI_AQUI
+
+# OBS: A variável WPP_SESSION_NAME é definida diretamente no docker-compose.yml 
+# e não precisa estar no seu arquivo .env, mas é bom saber que ela existe.
