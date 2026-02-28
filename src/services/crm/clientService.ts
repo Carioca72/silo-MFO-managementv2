@@ -1,3 +1,4 @@
+
 export interface Client {
   id: string;
   nome: string;
@@ -14,61 +15,95 @@ export interface Client {
 }
 
 class ClientService {
-  private clients: Client[] = [
-    {
-      id: '1', nome: 'Família Andrade', cnpj: '12.345.678/0001-90',
-      portfolio: 'andrade_main', email: 'gestao@andrade.com.br',
-      telefone: '+55 81 99999-0001', aum: 'R$ 12,4M', retorno: '+8.2%',
-      status: 'ativo', perfil: 'Moderado', sincronizado: true, stage: 'cliente_ativo'
-    },
-    {
-      id: '2', nome: 'Instituto Brennand', cnpj: '23.456.789/0001-12',
-      portfolio: 'brennand_fundo', email: 'financeiro@brennand.org',
-      telefone: '+55 81 99999-0002', aum: 'R$ 8,7M', retorno: '+5.9%',
-      status: 'ativo', perfil: 'Conservador', sincronizado: true, stage: 'cliente_ativo'
-    },
-    {
-      id: '3', nome: 'Holding Cerqueira', cnpj: '34.567.890/0001-23',
-      portfolio: 'cerqueira_holding', email: 'diretoria@cerqueira.com',
-      telefone: '+55 81 99999-0003', aum: 'R$ 21,3M', retorno: '+11.4%',
-      status: 'alerta', perfil: 'Arrojado', sincronizado: true, stage: 'cliente_ativo'
-    },
-    {
-      id: '4', nome: 'Família Magalhães', cnpj: '56.789.012/0001-45',
-      portfolio: 'magalhaes_fam', email: 'patrimonial@magalhaes.com',
-      telefone: '+55 81 99999-0005', aum: 'R$ 15,8M', retorno: '-1.2%',
-      status: 'risco', perfil: 'Moderado', sincronizado: false, stage: 'cliente_ativo'
-    },
-    // Add a lead for testing
-    {
-      id: 'CLI-12345', nome: 'Novo Investidor Teste', cnpj: '00.000.000/0001-00',
-      portfolio: 'N/A', email: 'teste@investidor.com',
-      telefone: '+55 11 99999-9999', aum: 'R$ 0,0M', retorno: '0%',
-      status: 'lead', perfil: 'N/A', sincronizado: true, stage: 'lead'
+
+  private getApiCredentials() {
+    const apiUrl = process.env.DATA_CRAZY_API_URL;
+    const apiToken = process.env.DATA_CRAZY_TOKEN;
+
+    if (!apiUrl || !apiToken) {
+      console.error('ERRO CRÍTICO: As variáveis de ambiente DATA_CRAZY_API_URL e DATA_CRAZY_TOKEN não estão definidas. A integração com o CRM não funcionará.');
+      return null;
     }
-  ];
-
-  getAll(): Client[] {
-    return this.clients;
+    return { apiUrl, apiToken };
   }
 
-  getById(id: string): Client | undefined {
-    return this.clients.find(c => c.id === id);
-  }
+  async getAll(): Promise<Client[]> {
+    const creds = this.getApiCredentials();
+    if (!creds) return []; // Retorna array vazio se não houver credenciais
 
-  updateStage(id: string, newStage: string): Client | null {
-    const client = this.clients.find(c => c.id === id);
-    if (client) {
-      client.stage = newStage;
-      // Map stage to status roughly
-      if (['lead', 'qualificado', 'estudo', 'aporte'].includes(newStage)) {
-        client.status = newStage as any;
-      } else if (newStage === 'cliente_ativo') {
-        client.status = 'ativo';
+    try {
+      const response = await fetch(`${creds.apiUrl}/clients`, {
+        headers: {
+          'Authorization': `Bearer ${creds.apiToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Falha ao buscar clientes do CRM: ${response.statusText}`);
       }
-      return client;
+
+      const clients: Client[] = await response.json();
+      return clients;
+
+    } catch (error) {
+      console.error('Falha na comunicação com a API do CRM (Data Crazy) em getAll:', error);
+      return []; // Retorna array vazio em caso de erro na chamada
     }
-    return null;
+  }
+
+  async getById(id: string): Promise<Client | undefined> {
+    const creds = this.getApiCredentials();
+    if (!creds) return undefined;
+
+    try {
+      const response = await fetch(`${creds.apiUrl}/clients/${id}`, {
+        headers: {
+          'Authorization': `Bearer ${creds.apiToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+         if (response.status === 404) return undefined;
+        throw new Error(`Falha ao buscar cliente ${id} do CRM: ${response.statusText}`);
+      }
+
+      const client: Client = await response.json();
+      return client;
+
+    } catch (error) {
+        console.error(`Falha na comunicação com a API do CRM (Data Crazy) em getById para o ID ${id}:`, error);
+        return undefined;
+    }
+  }
+
+  // A função de update permanece otimista, mas agora precisa de credenciais.
+  async updateStage(id: string, newStage: string): Promise<Client | null> {
+     const creds = this.getApiCredentials();
+    if (!creds) return null;
+
+    try {
+       const response = await fetch(`${creds.apiUrl}/clients/${id}/stage`, {
+        method: 'PATCH', // ou PUT, dependendo da API
+        headers: {
+          'Authorization': `Bearer ${creds.apiToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ stage: newStage })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Falha ao atualizar o estágio do cliente ${id}: ${response.statusText}`);
+      }
+
+      const updatedClient: Client = await response.json();
+      return updatedClient;
+
+    } catch(error) {
+        console.error(`Falha na comunicação com a API do CRM (Data Crazy) em updateStage para o ID ${id}:`, error);
+        return null;
+    }
   }
 }
 

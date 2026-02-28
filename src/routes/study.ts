@@ -1,21 +1,19 @@
+
 import express from 'express';
 import multer from 'multer';
 import { pythonAgentService } from '../services/ai/pythonAgentService.js';
 import { marketDataAggregator } from '../services/market/marketDataAggregator.js';
-import { markowitzService } from '../services/math/markowitz.js';
+// Otimizador de Markowitz refatorado sendo importado
+import { portfolioOptimizer } from '../services/math/portfolioOptimizer.js';
 import { excelGenerator } from '../services/reports/excelGenerator.js';
 
 const router = express.Router();
 
-// --- Configuração do Multer para Upload de Arquivos ---
-// Armazenar o arquivo em memória para que possamos repassá-lo facilmente.
 const storage = multer.memoryStorage();
 const upload = multer({ 
   storage: storage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // Limite de 10MB
+  limits: { fileSize: 10 * 1024 * 1024 },
 });
-
-// --- NOVOS ENDPOINTS COM IA ---
 
 // POST /api/study/upload-and-analyze
 router.post('/upload-and-analyze', upload.single('portfolioFile'), async (req, res) => {
@@ -31,12 +29,10 @@ router.post('/upload-and-analyze', upload.single('portfolioFile'), async (req, r
     );
     res.json(result);
   } catch (error: any) {
+    // Erros do Python Agent podem ser erros de servidor ou de input
     res.status(500).json({ error: error.message });
   }
 });
-
-
-// --- ENDPOINTS ANTERIORES ---
 
 // GET /api/study/market-data?tickers=PETR4,VALE3
 router.get('/market-data', async (req, res) => {
@@ -49,20 +45,35 @@ router.get('/market-data', async (req, res) => {
     const quotes = await marketDataAggregator.getMonthlyQuotes(tickers);
     res.json(quotes);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: `Erro interno do servidor: ${error.message}` });
   }
 });
 
 // POST /api/study/optimize
-router.post('/optimize', (req, res) => {
-  const { assets, riskFreeRate, constraints } = req.body;
-  if (!assets) return res.status(400).json({ error: 'Ativos são obrigatórios' });
+// Este endpoint agora usa diretamente o portfolioOptimizer refatorado.
+router.post('/optimize', async (req, res) => {
+  const { assets, riskFreeRate, targetReturn } = req.body;
+
+  if (!assets || !Array.isArray(assets) || assets.length === 0) {
+      return res.status(400).json({ message: 'O campo \'assets\' é obrigatório e deve ser um array não vazio.' });
+  }
+  if (typeof riskFreeRate !== 'number') {
+      return res.status(400).json({ message: 'O campo \'riskFreeRate\' é obrigatório e deve ser um número.' });
+  }
 
   try {
-    const result = markowitzService.optimize(assets, riskFreeRate || 10.5, constraints || { minWeight: 0, maxWeight: 1 });
-    res.json(result);
+    // Chamada direta para o novo otimizador robusto
+    const scenarios = await portfolioOptimizer.optimize(assets, riskFreeRate, targetReturn);
+    res.json(scenarios);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    // Se for um erro lançado pela nossa validação (falta de dados, etc.)
+    // Retornamos 422 - Unprocessable Entity
+    // Este é o comportamento "fail-fast" que queríamos.
+    console.error(`Falha na otimização de portfólio: ${error.message}`);
+    res.status(422).json({ 
+        error: "A otimização falhou devido a dados de entrada inválidos ou insuficientes.",
+        details: error.message // A mensagem de erro específica do otimizador
+    });
   }
 });
 
@@ -75,7 +86,7 @@ router.post('/generate-excel', async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename=estudo_${Date.now()}.xlsx`);
     res.send(buffer);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: `Erro ao gerar o arquivo Excel: ${error.message}` });
   }
 });
 

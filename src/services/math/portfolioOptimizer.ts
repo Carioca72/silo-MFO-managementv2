@@ -1,8 +1,10 @@
+
 import * as math from 'mathjs';
 import { AssetData } from '../market/dataFetcher.js';
 import { marketDataAggregator } from '../market/marketDataAggregator.js';
 import { bacenIntegration } from '../../services/integration/bacenIntegration.js';
-import { createPriceMatrix, fillMissingData } from '../../utils/dataUtils.js';
+// REMOVIDO: a função fillMissingData não será mais usada.
+import { createPriceMatrix } from '../../utils/dataUtils.js';
 
 export interface PortfolioScenario {
   name: string;
@@ -22,7 +24,12 @@ export class PortfolioOptimizer {
   private calculateReturns(history: number[]): number[] {
     const returns: number[] = [];
     for (let i = 1; i < history.length; i++) {
-      returns.push((history[i] - history[i - 1]) / history[i - 1]);
+      // Adicionada validação para evitar divisão por zero se o preço anterior for 0
+      if (history[i - 1] === 0) {
+          returns.push(0);
+      } else {
+          returns.push((history[i] - history[i - 1]) / history[i - 1]);
+      }
     }
     return returns;
   }
@@ -45,60 +52,66 @@ export class PortfolioOptimizer {
    */
   private calculateCovariance(assetsReturns: number[][]): number[][] {
     const n = assetsReturns.length;
-    const minLen = Math.min(...assetsReturns.map(r => r.length));
-    
-    const alignedReturns = assetsReturns.map(r => r.slice(r.length - minLen));
-    
+    // Lógica de alinhamento removida - a validação prévia garantirá dados consistentes.
+    const minLen = assetsReturns[0].length;
+        
     const covMatrix: number[][] = Array(n).fill(0).map(() => Array(n).fill(0));
 
     for (let i = 0; i < n; i++) {
       for (let j = 0; j < n; j++) {
-        const meanI = math.mean(alignedReturns[i]) as unknown as number;
-        const meanJ = math.mean(alignedReturns[j]) as unknown as number;
+        const meanI = math.mean(assetsReturns[i]) as unknown as number;
+        const meanJ = math.mean(assetsReturns[j]) as unknown as number;
         let sum = 0;
         for (let k = 0; k < minLen; k++) {
-          sum += (alignedReturns[i][k] - meanI) * (alignedReturns[j][k] - meanJ);
+          sum += (assetsReturns[i][k] - meanI) * (assetsReturns[j][k] - meanJ);
         }
-        covMatrix[i][j] = (sum / (minLen - 1)) * 12; // Annualized (Monthly)
+        // Validação de Divisão por Zero
+        if (minLen - 1 <= 0) {
+            throw new Error(`Cálculo de covariância inválido: número de pontos de dados (${minLen}) é insuficiente.`);
+        }
+        const covariance = (sum / (minLen - 1)) * 12; // Annualized (Monthly)
+        
+        // Validação de NaN/Infinity no resultado
+        if (!isFinite(covariance)) {
+            throw new Error(`Erro matemático no cálculo da covariância para o par de ativos [${i},${j}]. Resultado: ${covariance}`);
+        }
+        covMatrix[i][j] = covariance;
       }
     }
     return covMatrix;
   }
 
   public async optimize(assets: AssetData[], riskFreeRate: number, targetReturn: number = 0.15): Promise<PortfolioScenario[]> {
-    // 1. Validate Target Return against Dynamic Benchmark
-    const marketBenchmark = await bacenIntegration.getMarketBenchmark();
-    const benchmarkVal = marketBenchmark / 100; // Convert to decimal
-
-    if (targetReturn < benchmarkVal) {
-        console.warn(`Target Return (${targetReturn}) is below Market Benchmark (${benchmarkVal}). Adjusting logic if needed.`);
-    }
-
-    // 2. Fetch Monthly Data via Aggregator (replacing daily data from DataFetcher for optimization)
+    // 1. Fetch Monthly Data
     const tickers = assets.map(a => a.ticker);
     const monthlyQuotes = await marketDataAggregator.getMonthlyQuotes(tickers);
     
-    // 3. Align and Fill Data
-    const priceMatrix = createPriceMatrix(monthlyQuotes);
-    const filledPrices = fillMissingData(priceMatrix);
-
-    // 4. Calculate Returns
-    const returnsList: number[][] = [];
-    const assetTickers = Object.keys(filledPrices);
-    
-    // Ensure order matches 'assets' array for weight mapping
-    // We need to map back to the original assets array order
-    const orderedReturns: number[][] = [];
-    
-    assets.forEach(asset => {
-        const prices = filledPrices[asset.ticker];
-        if (prices && prices.length > 1) {
-            orderedReturns.push(this.calculateReturns(prices));
-        } else {
-            // Fallback if no data found
-            orderedReturns.push([]);
+    // 2. Validação de Dados ("Gatekeeper")
+    const MINIMUM_REQUIRED_MONTHS = 36;
+    for (const asset of assets) {
+        const assetData = monthlyQuotes.find(q => q.ticker === asset.ticker);
+        const historyLength = assetData?.history.length || 0;
+        if (historyLength < MINIMUM_REQUIRED_MONTHS) {
+            throw new Error(`Otimização abortada: O ativo '${asset.ticker}' possui apenas ${historyLength} meses de histórico. O mínimo requerido é ${MINIMUM_REQUIRED_MONTHS}.`);
         }
+    }
+
+    // 3. Criar Matriz de Preços (sem preenchimento de dados)
+    const priceMatrix = createPriceMatrix(monthlyQuotes);
+    // REMOVIDO: const filledPrices = fillMissingData(priceMatrix);
+
+    // 4. Calcular Retornos
+    const orderedReturns: number[][] = [];
+    assets.forEach(asset => {
+        const prices = priceMatrix[asset.ticker];
+        // A validação do Gatekeeper garante que prices existe e tem comprimento suficiente.
+        orderedReturns.push(this.calculateReturns(prices));
     });
+
+    // Validação Pós-Cálculo de Retornos
+    if(orderedReturns.some(r => r.length === 0)) {
+        throw new Error("Erro inesperado: A lista de retornos de um ativo está vazia mesmo após validação inicial.");
+    }
 
     const stats = orderedReturns.map(r => this.calculateStats(r));
     const expectedReturns = stats.map(s => s.mean);
@@ -115,21 +128,16 @@ export class PortfolioOptimizer {
     let minVolWeights: number[] = [];
     let minVolStats = { ret: 0, vol: 0, sharpe: 0 };
 
-    // Target Return Logic
-    const targetReturnVal = targetReturn; 
     let targetReturnWeights: number[] = [];
     let targetReturnStats = { ret: 0, vol: Infinity, sharpe: 0 };
 
     for (let i = 0; i < numPortfolios; i++) {
-      // Generate random weights
       let weights = assets.map(() => Math.random());
       const sum = weights.reduce((a, b) => a + b, 0);
       weights = weights.map(w => w / sum);
 
-      // Portfolio Return
       const portReturn = weights.reduce((acc, w, idx) => acc + w * expectedReturns[idx], 0);
 
-      // Portfolio Volatility
       let variance = 0;
       for (let j = 0; j < assets.length; j++) {
         for (let k = 0; k < assets.length; k++) {
@@ -137,35 +145,41 @@ export class PortfolioOptimizer {
         }
       }
       const portVol = Math.sqrt(variance);
-
-      // Sharpe
       const sharpe = (portReturn - (riskFreeRate / 100)) / portVol;
 
-      // Check Max Sharpe
+      // Validação de Robustez dentro do Loop
+      if (!isFinite(portReturn) || !isFinite(portVol) || !isFinite(sharpe)) {
+          // Loga um aviso mas não para a simulação inteira, apenas descarta este resultado.
+          console.warn(`Simulação ${i} resultou em valores inválidos (ret: ${portReturn}, vol: ${portVol}). Pesos: ${weights}. Pulando.`);
+          continue;
+      }
+
       if (sharpe > maxSharpe) {
         maxSharpe = sharpe;
         bestSharpeWeights = weights;
         bestSharpeStats = { ret: portReturn, vol: portVol, sharpe };
       }
 
-      // Check Min Vol
       if (portVol < minVol) {
         minVol = portVol;
         minVolWeights = weights;
         minVolStats = { ret: portReturn, vol: portVol, sharpe };
       }
 
-      // Check Target Return (Closest to target with min vol)
-      if (portReturn >= targetReturnVal && portVol < targetReturnStats.vol) {
+      if (portReturn >= targetReturn && portVol < targetReturnStats.vol) {
           targetReturnStats = { ret: portReturn, vol: portVol, sharpe };
           targetReturnWeights = weights;
       }
     }
 
+    if (bestSharpeWeights.length === 0) {
+        throw new Error("Não foi possível encontrar um portfólio ótimo de Sharpe Máximo após as simulações. Verifique os dados de entrada.");
+    }
+
     // 6. Construct Scenarios
     const createScenario = (name: string, weights: number[], s: typeof bestSharpeStats): PortfolioScenario => {
       const wMap: { [key: string]: number } = {};
-      assets.forEach((a, idx) => wMap[a.ticker] = weights[idx]);
+      assets.forEach((a, idx) => wMap[a.ticker] = weights[idx] || 0);
       return {
         name,
         weights: wMap,
@@ -183,54 +197,10 @@ export class PortfolioOptimizer {
     ];
 
     if (targetReturnWeights.length > 0) {
-        scenarios.push(createScenario(`Target Return ${(targetReturnVal*100).toFixed(0)}%`, targetReturnWeights, targetReturnStats));
+        scenarios.push(createScenario(`Target Return ${(targetReturn*100).toFixed(0)}%`, targetReturnWeights, targetReturnStats));
     }
 
     return scenarios;
-  }
-  
-  public async getEfficientFrontierPoints(assets: AssetData[], riskFreeRate: number): Promise<{ x: number, y: number, sharpe: number }[]> {
-      // Re-implement using monthly data logic or reuse common logic
-      // For brevity, I'll duplicate the prep logic here or refactor later.
-      // Let's just use the same prep logic.
-      
-      const tickers = assets.map(a => a.ticker);
-      const monthlyQuotes = await marketDataAggregator.getMonthlyQuotes(tickers);
-      const priceMatrix = createPriceMatrix(monthlyQuotes);
-      const filledPrices = fillMissingData(priceMatrix);
-      
-      const orderedReturns: number[][] = [];
-      assets.forEach(asset => {
-        const prices = filledPrices[asset.ticker];
-        if (prices) orderedReturns.push(this.calculateReturns(prices));
-        else orderedReturns.push([]);
-      });
-
-      const stats = orderedReturns.map(r => this.calculateStats(r));
-      const expectedReturns = stats.map(s => s.mean);
-      const covMatrix = this.calculateCovariance(orderedReturns);
-      
-      const points: { x: number, y: number, sharpe: number }[] = [];
-      const numPortfolios = 2000; 
-      
-      for (let i = 0; i < numPortfolios; i++) {
-          let weights = assets.map(() => Math.random());
-          const sum = weights.reduce((a, b) => a + b, 0);
-          weights = weights.map(w => w / sum);
-          
-          const portReturn = weights.reduce((acc, w, idx) => acc + w * expectedReturns[idx], 0);
-          let variance = 0;
-          for (let j = 0; j < assets.length; j++) {
-              for (let k = 0; k < assets.length; k++) {
-                  variance += weights[j] * weights[k] * covMatrix[j][k];
-              }
-          }
-          const portVol = Math.sqrt(variance);
-          const sharpe = (portReturn - (riskFreeRate / 100)) / portVol;
-          
-          points.push({ x: portVol * 100, y: portReturn * 100, sharpe });
-      }
-      return points;
   }
 }
 
