@@ -1,219 +1,264 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Sparkles, Trash2, FileText, RefreshCw } from 'lucide-react';
+import { Send, Bot, User, Sparkles, Trash2, FileText, RefreshCw, StopCircle } from 'lucide-react';
 import { getApiUrl } from '../../services/api';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
-interface Message { role:'user'|'assistant'; content:string; ts:string; }
+// --- Interfaces e Constantes ---
+type MessageRole = 'user' | 'assistant';
+interface Message {
+  role: MessageRole;
+  content: string;
+  ts: string;
+}
 
-const QUICK = [
- 'Analise o risco da carteira Familia Andrade',
- 'Recomende ferramentas para relatorio mensal',
- 'Calcule VaR 95% para Holding Cerqueira',
- 'Gere estudo de viabilidade — perfil moderado R$10M',
- 'Compare retorno das carteiras vs CDI ultimo ano',
+const QUICK_PROMPTS = [
+  'Analise o risco da carteira Familia Andrade',
+  'Recomende ferramentas para relatorio mensal',
+  'Calcule VaR 95% para Holding Cerqueira',
+  'Gere estudo de viabilidade — perfil moderado R$10M',
+  'Compare retorno das carteiras vs CDI ultimo ano',
 ];
 
-// Renderizador markdown simples sem dependencia extra
-function MdText({ text }: { text: string }) {
- const html = text
- .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
- .replace(/`(.+?)`/g, '<code style="background:#f1f5f9;padding:1px 4px;border-radius:3px;font-family:monospace;font-size:11px">$1</code>')
- .replace(/^#{2} (.+)$/gm, '<p style="font-weight:700;font-size:13px;color:#0F0F1A;margin:8px 0 3px">$1</p>')
- .replace(/^- (.+)$/gm, '<div style="padding-left:12px;margin:1px 0">• $1</div>')
- .replace(/\n\n/g, '<br/><br/>').replace(/\n/g, '<br/>');
- return <div dangerouslySetInnerHTML={{ __html: html }}
- style={{ lineHeight:'1.6', fontSize:'13px' }} />;
-}
+// --- Componentes de UI ---
+
+// Renderizador de Markdown simples, adaptado para o novo tema
+const MarkdownRenderer = ({ text }: { text: string }) => {
+  const html = text
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/`([^`]+)`/g, '<code class="bg-muted text-muted-foreground px-1 py-0.5 rounded-sm font-mono text-xs">$1</code>')
+    .replace(/^#{2}\s(.+)/gm, '<h2 class="text-lg font-semibold text-foreground mt-2 mb-1">$1</h2>')
+    .replace(/^-\s(.+)/gm, '<li class="ml-4 list-disc">$1</li>')
+    .replace(/\n/g, '<br />');
+
+  return <div dangerouslySetInnerHTML={{ __html: html }} className="prose prose-sm dark:prose-invert max-w-none" />;
+};
+
+const ChatMessage = ({ msg }: { msg: Message }) => {
+  const isUser = msg.role === 'user';
+  return (
+    <div className={`flex items-start gap-3 ${isUser ? 'justify-end' : ''}`}>
+      {!isUser && (
+        <Avatar className="w-8 h-8 flex-shrink-0">
+          <AvatarFallback className="bg-primary text-primary-foreground">AI</AvatarFallback>
+        </Avatar>
+      )}
+      <div 
+        className={`max-w-[80%] rounded-lg px-4 py-3 text-sm ${isUser 
+          ? 'bg-primary text-primary-foreground rounded-br-none' 
+          : 'bg-secondary text-secondary-foreground rounded-bl-none'}`
+        }>
+        <MarkdownRenderer text={msg.content} />
+        <p className={`text-xs mt-2 ${isUser ? 'text-primary-foreground/60' : 'text-muted-foreground'}`}>{msg.ts}</p>
+      </div>
+      {isUser && (
+        <Avatar className="w-8 h-8 flex-shrink-0">
+          <AvatarFallback>U</AvatarFallback>
+        </Avatar>
+      )}
+    </div>
+  );
+};
+
+const QuickPromptPanel = ({ onPromptClick }: { onPromptClick: (prompt: string) => void }) => (
+  <Card>
+    <CardHeader>
+      <CardTitle className="text-base flex items-center gap-2">
+        <Sparkles className="text-primary" size={18} /> Consultas Rápidas
+      </CardTitle>
+    </CardHeader>
+    <CardContent className="flex flex-col gap-2">
+      {QUICK_PROMPTS.map((prompt, i) => (
+        <Button key={i} variant="outline" size="sm" className="text-xs text-left justify-start h-auto whitespace-normal" onClick={() => onPromptClick(prompt)}>
+          {prompt}
+        </Button>
+      ))}
+    </CardContent>
+  </Card>
+);
+
+const SessionInfoPanel = ({ messageCount }: { messageCount: number }) => (
+  <Card>
+    <CardHeader>
+      <CardTitle className="text-base flex items-center gap-2">
+        <FileText className="text-primary" size={18} /> Sessão Atual
+      </CardTitle>
+    </CardHeader>
+    <CardContent className="text-sm text-muted-foreground space-y-2">
+      <div className="flex justify-between"><span>Modelo</span> <span className="font-medium text-foreground">Gemini 2.5 Flash</span></div>
+      <div className="flex justify-between"><span>Mensagens</span> <span className="font-medium text-foreground">{messageCount}</span></div>
+      <div className="flex justify-between"><span>Status API</span> <span className="font-medium text-green-500">Online</span></div>
+    </CardContent>
+  </Card>
+);
+
+// --- Componente Principal ---
 
 export default function AdvisorPage() {
- const [messages, setMessages] = useState<Message[]>([{
- role:'assistant', ts: new Date().toLocaleTimeString('pt-BR'),
- content:'## SILO Advisor\n\nOla! Sou seu assistente de inteligencia financeira.\nTenho acesso aos dados ComDinheiro e posso gerar relatorios, analisar riscos e automatizar tarefas.'
- }]);
- const [input, setInput] = useState('');
- const [loading, setLoading] = useState(false);
- const [stream, setStream] = useState('');
- const endRef = useRef<HTMLDivElement>(null);
- const abortRef = useRef<AbortController|null>(null);
+  const [messages, setMessages] = useState<Message[]>([
+    { role: 'assistant', content: '## SILO Advisor\nOlá! Como posso te ajudar a analisar seus portfólios hoje?', ts: new Date().toLocaleTimeString('pt-BR') }
+  ]);
+  const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [streamingContent, setStreamingContent] = useState('');
+  const endOfMessagesRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
- useEffect(() => { endRef.current?.scrollIntoView({behavior:'smooth'}); },
- [messages, stream]);
+  useEffect(() => {
+    endOfMessagesRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, streamingContent]);
 
- const send = async (text?: string) => {
- const msg = text || input;
- if (!msg.trim() || loading) return;
- setInput('');
- const userMsg: Message = { role:'user', content:msg,
- ts: new Date().toLocaleTimeString('pt-BR') };
- const history = [...messages, userMsg];
- setMessages(history);
- setLoading(true); setStream('');
- 
- abortRef.current = new AbortController();
- try {
- const res = await fetch(getApiUrl('/advisor/chat'), {
- method:'POST', headers:{'Content-Type':'application/json'},
- body: JSON.stringify({
- message: msg,
- history: history.slice(-10).map(m=>({role:m.role,content:m.content})),
- }),
- signal: abortRef.current.signal,
- });
- const data = await res.json();
- const reply = data.response || data.error || 'Erro ao processar.';
- 
- // Simula streaming token-a-token
- let displayed = '';
- for (const word of reply.split(' ')) {
- displayed += (displayed ? ' ' : '') + word;
- setStream(displayed);
- await new Promise(r => setTimeout(r, 18));
- if (abortRef.current?.signal.aborted) break;
- }
- setMessages(p => [...p, { role:'assistant', content:reply,
- ts: new Date().toLocaleTimeString('pt-BR') }]);
- setStream('');
- } catch (e: any) {
- if (e.name !== 'AbortError')
- setMessages(p => [...p, { role:'assistant',
- content:'Erro de conexao. Verifique se o servidor esta rodando.',
- ts: new Date().toLocaleTimeString('pt-BR') }]);
- setStream('');
- }
- setLoading(false);
- };
+  const handleSendMessage = async (text?: string) => {
+    const messageToSend = text || input;
+    if (!messageToSend.trim() || isLoading) return;
 
- const clear = () => {
- abortRef.current?.abort();
- setMessages([{ role:'assistant', content:'Conversa reiniciada.',
- ts: new Date().toLocaleTimeString('pt-BR') }]);
- setStream(''); setLoading(false);
- };
+    setInput('');
+    const userMessage: Message = { role: 'user', content: messageToSend, ts: new Date().toLocaleTimeString('pt-BR') };
+    const newHistory = [...messages, userMessage];
+    setMessages(newHistory);
+    setIsLoading(true);
+    setStreamingContent('');
+    
+    abortControllerRef.current = new AbortController();
 
- return (
- <div className="flex gap-4" style={{height:'calc(100vh - 8rem)'}}>
- {/* Chat principal */}
- <div className="flex-1 bg-white rounded-xl border border-gray-200
- shadow-sm flex flex-col overflow-hidden">
- <div className="p-4 border-b border-gray-100 flex items-center justify-between">
- <div className="flex items-center gap-3">
- <div className="w-9 h-9 bg-[#C9A84C] rounded-full flex items-center justify-center">
- <Bot size={18} className="text-[#0F0F1A]"/>
- </div>
- <div>
- <p className="font-semibold text-[#0F0F1A] text-sm">SILO Advisor</p>
- <p className="text-[10px] text-gray-400">
- Gemini 2.5 Flash · {messages.length - 1} mensagens na sessao
- </p>
- </div>
- </div>
- <button onClick={clear} title="Limpar conversa"
- className="p-1.5 hover:bg-gray-100 rounded-lg">
- <Trash2 size={14} className="text-gray-400"/>
- </button>
- </div>
- 
- {/* Mensagens */}
- <div className="flex-1 overflow-y-auto p-4 space-y-4">
- {messages.map((m, i) => (
- <div key={i} className={`flex gap-3 ${m.role==='user'?'flex-row-reverse':''}`}>
- <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${
- m.role==='assistant' ? 'bg-[#1A1A2E]' : 'bg-[#F4F1EB]'}`}>
- {m.role==='assistant'
- ? <Bot size={14} className="text-white"/>
- : <User size={14} className="text-[#C9A84C]"/>}
- </div>
- <div className={`max-w-[82%] px-4 py-3 rounded-xl ${ m.role==='user'
- ? 'bg-[#1A1A2E] text-white rounded-tr-none'
- : 'bg-[#F4F1EB] border border-[#C9A84C]/15 rounded-tl-none'}`}>
- {m.role==='assistant'
- ? <MdText text={m.content}/>
- : <p className="text-sm leading-relaxed">{m.content}</p>}
- <p className={`text-[10px] mt-1.5 ${ m.role==='user'?'text-white/40':'text-gray-400'}`}>{m.ts}</p>
- </div>
- </div>
- ))}
- 
- {stream && (
- <div className="flex gap-3">
- <div className="w-7 h-7 bg-[#1A1A2E] rounded-full flex items-center justify-center flex-shrink-0">
- <Bot size={14} className="text-white"/>
- </div>
- <div className="max-w-[82%] bg-[#F4F1EB] border border-[#C9A84C]/15 rounded-xl rounded-tl-none px-4 py-3">
- <MdText text={stream}/>
- <span className="inline-block w-1.5 h-3.5 bg-[#C9A84C] ml-0.5 animate-pulse rounded-sm"/>
- </div>
- </div>
- )}
- 
- {loading && !stream && (
- <div className="flex gap-3">
- <div className="w-7 h-7 bg-[#1A1A2E] rounded-full flex items-center justify-center flex-shrink-0">
- <Bot size={14} className="text-white"/>
- </div>
- <div className="bg-[#F4F1EB] border border-[#C9A84C]/15 rounded-xl rounded-tl-none px-4 py-3 flex items-center gap-2">
- <RefreshCw size={13} className="text-[#C9A84C] animate-spin"/>
- <span className="text-xs text-gray-500">Analisando dados...</span>
- </div>
- </div>
- )}
- <div ref={endRef}/>
- </div>
- 
- {/* Input */}
- <div className="p-4 border-t border-gray-100">
- <div className="flex gap-2">
- <textarea value={input} onChange={e => setInput(e.target.value)}
- onKeyDown={e => { if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();} }}
- placeholder="Pergunte sobre carteiras, risco, benchmarks... (Enter envia)"
- rows={2}
- className="flex-1 text-sm border border-gray-200 rounded-xl px-4 py-2.5 resize-none focus:ring-1 focus:ring-[#C9A84C] outline-none"/>
- <div className="flex flex-col gap-1.5">
- <button onClick={() => send()} disabled={!input.trim()||loading}
- className="p-2.5 bg-[#C9A84C] text-[#0F0F1A] rounded-xl hover:bg-[#b8942e] disabled:opacity-40">
- {loading ? <RefreshCw size={16} className="animate-spin"/> : <Send size={16}/>}
- </button>
- {loading && (
- <button onClick={() => { abortRef.current?.abort(); setLoading(false); setStream(''); }}
- className="p-2.5 bg-red-100 text-red-500 rounded-xl">X</button>
- )}
- </div>
- </div>
- </div>
- </div>
- 
- {/* Painel lateral */}
- <div className="w-60 flex flex-col gap-4 flex-shrink-0">
- <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
- <h3 className="text-xs font-semibold text-[#0F0F1A] mb-3 flex items-center gap-2">
- <Sparkles size={13} className="text-[#C9A84C]"/> Consultas Rapidas
- </h3>
- <div className="space-y-1.5">
- {QUICK.map((q,i) => (
- <button key={i} onClick={() => send(q)}
- className="w-full text-left text-[11px] text-gray-600 p-2 rounded-lg
- hover:bg-[#C9A84C]/8 hover:text-[#0F0F1A] border border-transparent
- hover:border-[#C9A84C]/20 transition-all leading-relaxed">
- {q}
- </button>
- ))}
- </div>
- </div>
- <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
- <h3 className="text-xs font-semibold text-[#0F0F1A] mb-3 flex items-center gap-2">
- <FileText size={13} className="text-[#C9A84C]"/> Sessao Atual
- </h3>
- <div className="space-y-2 text-[11px] text-gray-500">
- {[['Modelo','Gemini 2.5 Flash'],['Mensagens',messages.length],['Endpoints','50+'],
- ['Status API','Online']].map(([l,v]) => (
- <div key={String(l)} className="flex justify-between">
- <span>{l}</span>
- <span className={`font-medium ${ String(l)==='Status API'?'text-emerald-600':'text-gray-700'}`}>{v}</span>
- </div>
- ))}
- </div>
- </div>
- </div>
- </div>
- );
+    try {
+      const response = await fetch(getApiUrl('/advisor/chat'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: messageToSend,
+          history: newHistory.slice(-10).map(m => ({ role: m.role, content: m.content })),
+        }),
+        signal: abortControllerRef.current.signal,
+      });
+
+      if (!response.ok || !response.body) {
+        throw new Error('Resposta da API inválida.');
+      }
+
+      // Processamento de Stream
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let fullReply = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        fullReply += decoder.decode(value, { stream: true });
+        setStreamingContent(fullReply);
+      }
+      
+      setMessages(prev => [...prev, { role: 'assistant', content: fullReply, ts: new Date().toLocaleTimeString('pt-BR') }]);
+
+    } catch (error: any) {
+      if (error.name !== 'AbortError') {
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: 'Ocorreu um erro ao conectar com o servidor. Por favor, tente novamente.',
+          ts: new Date().toLocaleTimeString('pt-BR'),
+        }]);
+      }
+    } finally {
+      setIsLoading(false);
+      setStreamingContent('');
+      abortControllerRef.current = null;
+    }
+  };
+
+  const handleClearChat = () => {
+    abortControllerRef.current?.abort();
+    setMessages([
+      { role: 'assistant', content: 'Conversa reiniciada. Como posso ajudar?', ts: new Date().toLocaleTimeString('pt-BR') }
+    ]);
+    setStreamingContent('');
+    setIsLoading(false);
+  };
+  
+  const handleStopGeneration = () => {
+    abortControllerRef.current?.abort();
+  };
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-full">
+      
+      {/* Coluna Principal do Chat */}
+      <div className="md:col-span-2 flex flex-col h-full">
+        <Card className="flex-1 flex flex-col">
+          <CardHeader className="flex-row items-center justify-between">
+            <div className="flex items-center gap-3">
+                <Avatar className="w-10 h-10">
+                    <AvatarFallback className="bg-primary text-primary-foreground">AI</AvatarFallback>
+                </Avatar>
+                <div>
+                    <CardTitle className="text-lg">SILO Advisor</CardTitle>
+                    <p className="text-sm text-muted-foreground">Análise de Portfólio e Risco</p>
+                </div>
+            </div>
+            <Button variant="ghost" size="icon" onClick={handleClearChat} title="Limpar conversa">
+              <Trash2 className="h-5 w-5 text-muted-foreground" />
+            </Button>
+          </CardHeader>
+
+          <CardContent className="flex-1 overflow-y-auto p-4 space-y-4">
+            {messages.map((msg, i) => <ChatMessage key={i} msg={msg} />)}
+            
+            {streamingContent && (
+                <div className="flex items-start gap-3">
+                    <Avatar className="w-8 h-8 flex-shrink-0">
+                        <AvatarFallback className="bg-primary text-primary-foreground">AI</AvatarFallback>
+                    </Avatar>
+                    <div className="max-w-[80%] rounded-lg bg-secondary text-secondary-foreground px-4 py-3 text-sm rounded-bl-none">
+                        <MarkdownRenderer text={streamingContent} />
+                        <span className="inline-block w-2 h-4 bg-primary ml-1 animate-pulse rounded-sm"/>
+                    </div>
+                </div>
+            )}
+
+            {isLoading && !streamingContent && (
+                <div className="flex items-center gap-3">
+                    <Avatar className="w-8 h-8 flex-shrink-0">
+                        <AvatarFallback className="bg-primary text-primary-foreground">AI</AvatarFallback>
+                    </Avatar>
+                    <div className="flex items-center gap-2 bg-secondary text-secondary-foreground px-4 py-3 rounded-lg">
+                        <RefreshCw className="h-4 w-4 animate-spin text-primary" />
+                        <span className="text-sm text-muted-foreground">Analisando...</span>
+                    </div>
+                </div>
+            )}
+            <div ref={endOfMessagesRef} />
+          </CardContent>
+
+          <CardFooter className="p-4 border-t">
+            <div className="flex items-start gap-2 w-full">
+              <Textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }}
+                placeholder="Converse com seu Advisor... (Enter para enviar, Shift+Enter para nova linha)"
+                className="flex-1 resize-none" 
+                rows={1}
+              />
+              {isLoading ? (
+                <Button variant="destructive" size="icon" onClick={handleStopGeneration} title="Parar geração">
+                  <StopCircle className="h-5 w-5" />
+                </Button>
+              ) : (
+                <Button size="icon" onClick={() => handleSendMessage()} disabled={!input.trim()}>
+                  <Send className="h-5 w-5" />
+                </Button>
+              )}
+            </div>
+          </CardFooter>
+        </Card>
+      </div>
+
+      {/* Coluna Lateral */}
+      <div className="hidden md:flex flex-col gap-6">
+        <QuickPromptPanel onPromptClick={handleSendMessage} />
+        <SessionInfoPanel messageCount={messages.length} />
+      </div>
+    </div>
+  );
 }
-

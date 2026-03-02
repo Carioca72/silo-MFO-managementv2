@@ -1,3 +1,45 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  :root {
+    /* Definição do Tema Escuro (Slate) como Padrão */
+    --background: 224 71.4% 4.1%;     /* slate-950 */
+    --foreground: 210 40% 98%;         /* slate-50 */
+
+    --card: 224 71.4% 4.1%;           /* slate-950 */
+    --card-foreground: 210 40% 98%;     /* slate-50 */
+
+    --popover: 224 71.4% 4.1%;         /* slate-950 */
+    --popover-foreground: 210 40% 98%; /* slate-50 */
+
+    --primary: 42 77% 56%;             /* Nosso Ouro/Dourado: #C9A84C */
+    --primary-foreground: 224 71.4% 4.1%; /* Contraste para o dourado: slate-950 */
+
+    --secondary: 215 27.9% 16.9%;     /* slate-800 */
+    --secondary-foreground: 210 40% 98%; /* slate-50 */
+
+    --muted: 215 27.9% 16.9%;         /* slate-800 */
+    --muted-foreground: 215 20.2% 65.1%; /* slate-400 */
+
+    --accent: 215 27.9% 16.9%;         /* slate-800 */
+    --accent-foreground: 210 40% 98%;   /* slate-50 */
+
+    --destructive: 0 62.8% 30.6%;       /* Vermelho para erros */
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 215 27.9% 16.9%;         /* slate-800 */
+    --input: 215 27.9% 16.9%;          /* slate-800 */
+    --ring: 42 77% 56%;                /* Dourado para foco */
+
+    --radius: 0.5rem;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', sans-serif;
+  }
+}
