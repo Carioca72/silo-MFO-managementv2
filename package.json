@@ -1,36 +1,44 @@
 {
-  "name": "finassist-api",
-  "version": "1.0.0",
-  "description": "API para o sistema FinAssist de análise e otimização de carteiras.",
-  "main": "server.ts",
+  "name": "finassist-client",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
   "scripts": {
-    "start": "ts-node-dev server.ts",
-    "build": "tsc"
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "preview": "vite preview"
   },
-  "keywords": [
-    "finance",
-    "api",
-    "portfolio",
-    "typescript"
-  ],
-  "author": "Seu Nome",
-  "license": "ISC",
   "dependencies": {
-    "@prisma/client": "^5.10.2",
-    "axios": "^1.6.7",
-    "cors": "^2.8.5",
-    "csv-stringify": "^6.5.0",
-    "dotenv": "^16.4.5",
-    "express": "^4.18.2",
-    "openai": "^4.28.4",
-    "puppeteer": "^22.6.3"
+    "@react-pdf/renderer": "^3.4.4",
+    "@tanstack/react-query": "^5.45.1",
+    "chart.js": "^4.4.3",
+    "framer-motion": "^11.2.10",
+    "lucide-react": "^0.395.0",
+    "react": "^18.2.0",
+    "react-chartjs-2": "^5.2.0",
+    "react-dom": "^18.2.0",
+    "react-gauge-chart": "^0.5.1",
+    "recharts": "^2.12.7",
+    "socket.io-client": "^4.7.5",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
-    "@types/cors": "^2.8.17",
-    "@types/express": "^4.17.21",
-    "@types/node": "^20.11.24",
-    "prisma": "^5.10.2",
-    "ts-node-dev": "^2.0.0",
-    "typescript": "^5.3.3"
+    "@tailwindcss/vite": "^4.0.0-alpha.13",
+    "@types/node": "^20.14.2",
+    "@types/react": "^18.2.66",
+    "@types/react-dom": "^18.2.22",
+    "@types/react-gauge-chart": "^0.4.3",
+    "@typescript-eslint/eslint-plugin": "^7.2.0",
+    "@typescript-eslint/parser": "^7.2.0",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.19",
+    "eslint": "^8.57.0",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "eslint-plugin-react-refresh": "^0.4.6",
+    "postcss": "^8.4.38",
+    "tailwindcss": "^3.4.4",
+    "typescript": "^5.2.2",
+    "vite": "^5.2.0"
   }
 }

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Send, Bot, User } from 'lucide-react';
+import { getApiUrl } from '../../services/api';
 
 export function ChatInterface() {
   const [messages, setMessages] = useState<{ role: 'user' | 'assistant'; content: string }[]>([]);
@@ -15,7 +16,7 @@ export function ChatInterface() {
     setLoading(true);
 
     try {
-      const res = await fetch('/api/advisor/chat', {
+      const res = await fetch(getApiUrl('/advisor/chat'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: userMessage }),

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Send, Bot, User, Sparkles, Trash2, FileText, RefreshCw } from 'lucide-react';
+import { getApiUrl } from '../../services/api';
 
 interface Message { role:'user'|'assistant'; content:string; ts:string; }
 
@@ -49,7 +50,7 @@ export default function AdvisorPage() {
  
  abortRef.current = new AbortController();
  try {
- const res = await fetch('/api/advisor/chat', {
+ const res = await fetch(getApiUrl('/advisor/chat'), {
  method:'POST', headers:{'Content-Type':'application/json'},
  body: JSON.stringify({
  message: msg,

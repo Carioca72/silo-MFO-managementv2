@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, QrCode, Wifi, WifiOff, Send, RefreshCw } from 'lucide-react';
+import { getApiUrl, socket } from '../../services/api';
 
 type Status = 'disconnected'|'qr'|'connected';
 interface Session { id:string;nome:string;status:Status;numero?:string; }
 
 const MOCK:Session[] = [
- {id:'s1',nome:'Silo — Principal',status:'connected',numero:'+55 81 3333-0001'},
+ {id:'s1',nome:'Silo — Principal',status:'disconnected',numero:'+55 81 3333-0001'},
  {id:'s2',nome:'Silo — Relatórios',status:'disconnected'},
 ];
 
@@ -16,20 +17,38 @@ export default function WhatsAppManager() {
  const [msg,setMsg] = useState('');
  const [sending,setSending] = useState(false);
  const [log,setLog] = useState<{to:string;status:string;ts:string}[]>([]);
+ const [qrCode, setQrCode] = useState<string | null>(null);
+
+ useEffect(() => {
+    // Listener para o evento de QR code
+    const qrListener = ({ qr }: { qr: string }) => {
+      setQrCode(qr);
+    };
+    socket.on('wa:qr', qrListener);
+
+    // Listener para o evento de conexão bem-sucedida
+    const connectListener = ({ id, number }: { id: string, number: string }) => {
+      setSessions(p => p.map(s => s.id === id ? { ...s, status: 'connected', numero: number } : s));
+      setQrCode(null);
+    };
+    socket.on('wa:connected', connectListener);
+
+    return () => {
+      socket.off('wa:qr', qrListener);
+      socket.off('wa:connected', connectListener);
+    };
+  }, []);
 
  const connect = async (id:string) => {
- setSessions(p=>p.map(s=>s.id===id?{...s,status:'qr'}:s));
- // Produção: socket.on('wa:qr:'+id, ({qr})=>renderQR(qr))
- setTimeout(()=>setSessions(p=>p.map(s=>s.id===id
- ?{...s,status:'connected',numero:'+55 81 9'+Math.floor(Math.random()*99999999)}
- :s)), 10000);
+  setSessions(p => p.map(s => s.id === id ? { ...s, status: 'qr' } : s));
+  // Em produção, o back-end emitirá um evento 'wa:qr' que será capturado pelo listener do useEffect
  };
 
  const sendMsg = async () => {
  if (!selSess||!to||!msg) return;
  setSending(true);
  try {
- await fetch(`/api/wa/sessions/${selSess.id}/send`,{
+      await fetch(getApiUrl(`/wa/sessions/${selSess.id}/send`), {
  method:'POST', headers:{'Content-Type':'application/json'},
  body:JSON.stringify({to,message:msg})
  });
@@ -102,11 +121,17 @@ export default function WhatsAppManager() {
  {sess.status==='qr' && (
  <div className="px-4 pb-4 border-t border-gray-100 pt-3
  flex flex-col items-center gap-3">
- <div className="w-40 h-40 bg-white border-2 border-[#C9A84C]
- rounded-xl flex flex-col items-center justify-center gap-2">
+                {qrCode ? (
+ <div
+ className="w-40 h-40 bg-white border-2 border-[#C9A84C] rounded-xl flex flex-col items-center justify-center gap-2"
+ dangerouslySetInnerHTML={{ __html: qrCode }}
+ />
+                ) : (
+ <div className="w-40 h-40 bg-white border-2 border-[#C9A84C] rounded-xl flex flex-col items-center justify-center gap-2">
  <QrCode size={72} className="text-[#1A1A2E]"/>
  <p className="text-[9px] text-gray-400">QR via WebSocket</p>
  </div>
+                )}
  <p className="text-xs text-gray-500 text-center">
  Aponte o WhatsApp para o QR. Atualiza a cada 30s.
  </p>

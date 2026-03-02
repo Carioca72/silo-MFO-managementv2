@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { motion } from 'motion/react';
+import { motion } from 'framer-motion';
 import { Upload, Search, BarChart2, FileText, ArrowRight, RefreshCw, Download, CheckCircle, AlertTriangle, TrendingUp, PieChart as PieIcon } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, ScatterChart, Scatter, ZAxis, LineChart, Line } from 'recharts';
 import { BenchmarkSelector, Benchmark } from '../market/BenchmarkSelector';
@@ -7,9 +7,10 @@ import { pdf } from '@react-pdf/renderer';
 import { SiloReportPDF } from './SiloReportPDF';
 import { generateExcelReport } from '../../services/reports/exportService';
 import { financialEngine, DetailedAsset } from '../../services/analysis/financialEngine';
-import { diagnosisEngine } from '../../services/analysis/diagnosisEngine';
+import { DiagnosisEngine } from '../../services/analysis/diagnosisEngine';
 import { Asset } from '../../types/asset';
 import { importService, DataQualityLog } from '../../services/import/importService';
+import { getApiUrl } from '../../services/api';
 import * as XLSX from 'xlsx';
 
 interface MarketData {
@@ -65,7 +66,7 @@ export default function PortfolioStudy() {
     setLoading(true);
     try {
       const tickers = assets.map(a => a.ticker);
-      const res = await fetch(`/api/study/market-data?tickers=${tickers.join(',')}`);
+      const res = await fetch(getApiUrl(`/study/market-data?tickers=${tickers.join(',')}`));
       const data = await res.json();
       
       const dataMap: Record<string, MarketData> = {};
@@ -92,7 +93,7 @@ export default function PortfolioStudy() {
 
   // Step 3: Load Models
   useEffect(() => {
-    fetch('/api/study/models')
+    fetch(getApiUrl('/study/models'))
       .then(res => res.json())
       .then(data => setModels(data))
       .catch(console.error);
@@ -108,7 +109,7 @@ export default function PortfolioStudy() {
         benchmark: benchmark // Pass selected benchmark
       };
 
-      const res = await fetch('/api/portfolio/analyze', {
+      const res = await fetch(getApiUrl('/portfolio/analyze'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -135,7 +136,8 @@ export default function PortfolioStudy() {
         taxRate: 0.15,
         adminFee: 0.01,
         returnRate: (a.ret12m || 10) / 100, // Assuming ret12m is %
-        volatility: (a.vol12m || 10) / 100
+        volatility: (a.vol12m || 10) / 100,
+        titulo: a.name
     }));
 
     const suggestedDetailedAssets: DetailedAsset[] = optimizationResult.scenarios[0].weights ? 
@@ -155,14 +157,26 @@ export default function PortfolioStudy() {
                 taxRate: 0.15,
                 adminFee: 0.01,
                 returnRate: (original?.ret12m || 10) / 100,
-                volatility: (original?.vol12m || 10) / 100
+                volatility: (original?.vol12m || 10) / 100,
+                titulo: original?.name || ticker
             };
         }) : [];
 
     const cdiRate = 0.105; // 10.5%
     const currentProjection = financialEngine.calculateProjection(currentDetailedAssets, cdiRate, 10000);
     const suggestedProjection = financialEngine.calculateProjection(suggestedDetailedAssets, cdiRate, 10000);
-    const diagnoses = diagnosisEngine.runDiagnosis(currentDetailedAssets);
+    
+    const diagnosisEngine = new DiagnosisEngine();
+    const concentrationResult = diagnosisEngine.checkForConcentration(currentDetailedAssets);
+    const liquidityResult = diagnosisEngine.checkForLiquidityDrag(currentDetailedAssets);
+
+    const diagnoses: {title: string, text: string}[] = [];
+    if (concentrationResult.hasConcentration) {
+        diagnoses.push({ title: 'Concentração de Ativos', text: concentrationResult.text });
+    }
+    if (liquidityResult.hasLiquidityDrag) {
+        diagnoses.push({ title: 'Arrasto de Liquidez', text: liquidityResult.text });
+    }
 
     if (type === 'pdf') {
         const blob = await pdf(
