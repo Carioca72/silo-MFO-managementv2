@@ -1,7 +1,8 @@
 import express, { Express, Request, Response } from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
-import studyRoutes from './src/routes/study'; // Importando as novas rotas
+import studyRoutes from '../src/routes/study'; // Caminho corrigido
+import advisorRoutes from '../src/routes/advisor'; // Importa a nova rota
 
 dotenv.config();
 
@@ -18,8 +19,9 @@ app.get('/', (req: Request, res: Response) => {
   res.send('Servidor FinAssist API está no ar!');
 });
 
-// Usando as rotas de estudo
+// Usando as rotas
 app.use('/api/study', studyRoutes);
+app.use('/api/advisor', advisorRoutes); // Usa a nova rota
 
 // Iniciar o servidor
 app.listen(port, () => {

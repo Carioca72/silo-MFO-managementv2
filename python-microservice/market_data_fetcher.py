@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 # --- Configurações ---
 BRAPI_TOKEN = os.getenv("BRAPI_TOKEN")
 BRAPI_BASE_URL = "https://brapi.dev/api"
+REQUEST_TIMEOUT = 15 # Timeout de 15 segundos para requisições externas
 
 # --- Funções de Busca de Dados ---
 
@@ -45,7 +46,8 @@ def _fetch_brapi_data(ticker: str):
 
     # 1. Obter dados históricos para cálculo
     response_hist = requests.get(
-        f"{BRAPI_BASE_URL}/quote/{ticker}?range=1y&interval=1d&token={BRAPI_TOKEN}"
+        f"{BRAPI_BASE_URL}/quote/{ticker}?range=1y&interval=1d&token={BRAPI_TOKEN}",
+        timeout=REQUEST_TIMEOUT
     )
     response_hist.raise_for_status() # Lança exceção para erros HTTP
     hist_data = response_hist.json().get('results', [{}])[0].get('historicalDataPrice')
@@ -65,7 +67,8 @@ def _fetch_brapi_data(ticker: str):
 
     # 3. Obter dados atuais do ativo
     response_quote = requests.get(
-        f"{BRAPI_BASE_URL}/quote/{ticker}?token={BRAPI_TOKEN}"
+        f"{BRAPI_BASE_URL}/quote/{ticker}?token={BRAPI_TOKEN}",
+        timeout=REQUEST_TIMEOUT
     )
     response_quote.raise_for_status()
     quote_data = response_quote.json().get('results', [{}])[0]

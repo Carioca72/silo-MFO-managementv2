@@ -1,6 +1,8 @@
+import { useState, useEffect } from 'react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { StatCard } from './StatCard';
 import { AlertFeed } from './AlertFeed';
+import { socket } from '../../services/api';
 
 const MOCK_DATA = [
   { name: 'Jan', aum: 4000 },
@@ -11,14 +13,31 @@ const MOCK_DATA = [
   { name: 'Jun', aum: 4800 },
 ];
 
-const MOCK_ALERTS = [
-  { id: '1', message: 'VaR excedido: Carteira Alpha (Limit: 2.0%, Atual: 2.4%)', time: '2h atrás', severity: 'high' as const },
-  { id: '2', message: 'Relatório pendente: Cliente Beta', time: '4h atrás', severity: 'medium' as const },
-  { id: '3', message: 'Nova ferramenta disponível: Stress Test v2', time: '1d atrás', severity: 'low' as const },
-  { id: '4', message: 'Envio em massa concluído com sucesso', time: '1d atrás', severity: 'success' as const },
-];
+interface Alert {
+  id: string;
+  message: string;
+  time: string;
+  severity: 'high' | 'medium' | 'low' | 'success';
+}
 
 export default function Dashboard() {
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+
+  useEffect(() => {
+    // Função para lidar com a recepção de novos alertas
+    const handleNewAlert = (newAlert: Alert) => {
+      setAlerts(prevAlerts => [newAlert, ...prevAlerts]);
+    };
+
+    // Se inscrever no evento 'new_alert'
+    socket.on('new_alert', handleNewAlert);
+
+    // Limpeza: se desinscrever do evento quando o componente for desmontado
+    return () => {
+      socket.off('new_alert', handleNewAlert);
+    };
+  }, []); // O array de dependências vazio garante que isso rode apenas uma vez
+
   return (
     <div className="space-y-6">
       {/* KPI Grid */}
@@ -63,7 +82,7 @@ export default function Dashboard() {
         </div>
 
         {/* Alert Feed */}
-        <AlertFeed alerts={MOCK_ALERTS} />
+        <AlertFeed alerts={alerts} />
       </div>
     </div>
   );

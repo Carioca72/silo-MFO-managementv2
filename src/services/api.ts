@@ -1,10 +1,10 @@
 import { io } from 'socket.io-client';
 
-// Use a variável de ambiente para a URL da API, com um fallback para desenvolvimento
-export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+// Aponte diretamente para o backend em desenvolvimento
+export const API_URL = 'http://localhost:3001/api';
 
-// Remove /api ou outras sub-rotas para a conexão do socket
-const SOCKET_URL = API_URL.replace('/api', '');
+// URL para a conexão do Socket.IO (sem /api)
+const SOCKET_URL = 'http://localhost:3001';
 
 console.log(`Connecting Socket.IO to: ${SOCKET_URL}`);
 
@@ -14,7 +14,7 @@ export const socket = io(SOCKET_URL, {
 
 // Função helper para construir URLs de fetch
 export const getApiUrl = (path: string) => {
-  // Garante que o path não comece com / para evitar URLs duplicadas
-  const cleanPath = path.startsWith('/') ? path.substring(1) : path;
-  return `${API_URL}/${cleanPath}`;
+  // Garante que o path comece com uma barra
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  return `${API_URL}${cleanPath}`;
 };

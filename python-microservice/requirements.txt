@@ -1,36 +1,10 @@
-# Framework para a criação da API
 fastapi
-
-# Servidor para rodar a aplicação FastAPI
-uvicorn[standard]
-
-# Biblioteca para conexão com o WhatsApp Web
-wppconnect-lib
-
-# Para carregar variáveis de ambiente de um arquivo .env (boa prática)
-python-dotenv
-
-# Necessário para que o FastAPI possa manipular formulários e uploads de arquivos
+uvicorn
 python-multipart
-
-# Biblioteca oficial do SendGrid para envio de e-mails
-sendgrid
-
-# Cliente Redis para Python
+requests
+PyPDF2
+pillow
+python-tesseract
+pdf2image
 redis
-
-# RQ (Redis Queue) para enfileiramento de tarefas
 rq
-
-# --- NOVAS DEPENDÊNCIAS (Fase 4) ---
-
-# Para OCR
-pytesseract # Wrapper do Tesseract OCR
-Pillow      # Manipulação de imagens
-poppler-utils # Utilizado pelo pdf2image
-pdf2image   # Converte PDFs em imagens para o OCR
-
-# Para Coleta de Dados de Mercado
-yfinance    # Yahoo Finance
-requests    # Para requisições HTTP (API da Brapi)
-pandas      # Para manipulação de dados, especialmente séries temporais
