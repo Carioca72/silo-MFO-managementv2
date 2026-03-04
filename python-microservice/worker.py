@@ -17,7 +17,6 @@ SENDER_EMAIL = os.getenv("SENDER_EMAIL")
 WPP_SESSION_NAME = os.getenv("WPP_SESSION_NAME", "BOT_FINASSIST_WORKER")
 
 # --- Gerenciamento da Conexão WhatsApp (Singleton para o Worker) ---
-# O worker é um processo único, então podemos gerenciar um cliente singleton aqui.
 class WhatsAppWorkerClient:
     _instance = None
 
@@ -35,8 +34,6 @@ class WhatsAppWorkerClient:
         print(f"[Worker] Iniciando cliente WhatsApp para a sessão: {WPP_SESSION_NAME}")
         self.client = Wppconnect(session=WPP_SESSION_NAME, headless=True)
         self.client.start(status_callback=self.status_callback)
-        # É crucial esperar até que a conexão seja estabelecida
-        # Este é um desafio com a lib, vamos usar um simples wait
         while not self.client.is_connected():
             print("[Worker] Aguardando conexão do WhatsApp...")
             await asyncio.sleep(10)
@@ -47,26 +44,32 @@ class WhatsAppWorkerClient:
         print(f"[Worker] Status do WhatsApp alterado: {status} para a sessão {session}")
         if status in ['notLogged', 'deviceNotConnected', 'browserClose']:
             self.status = "disconnected"
-            # Idealmente, aqui teríamos uma lógica para tentar reconectar ou alertar
 
     def get_client(self):
         if self.client and self.client.is_connected():
             return self.client
         else:
-            # Tenta reconectar ou lança um erro para a tarefa falhar e ser retentada
             print("[Worker] ERRO: Cliente WhatsApp não está conectado no momento da tarefa.")
             raise ConnectionError("Cliente WhatsApp do Worker não está conectado.")
 
-wpp_worker_client = None
+# --- Lazy Singleton Accessor for WhatsApp Client (Fix for B-16) ---
+_wpp_worker_client = None
+
+def get_wpp_worker_client():
+    """Lazy initializes and returns the WhatsAppWorkerClient singleton."""
+    global _wpp_worker_client
+    if _wpp_worker_client is None:
+        print("[Worker] First-time call: Initializing WhatsAppWorkerClient...")
+        _wpp_worker_client = WhatsAppWorkerClient()
+    return _wpp_worker_client
 
 # --- Definição das Tarefas (Jobs) ---
 
 def task_send_whatsapp_message(phone: str, message: str):
     """Tarefa que envia uma mensagem de texto via WhatsApp."""
     print(f"Processando tarefa: Enviar mensagem para {phone}")
-    wpp_client = wpp_worker_client.get_client()
+    wpp_client = get_wpp_worker_client().get_client()
     loop = asyncio.get_event_loop()
-    # A biblioteca wppconnect não é totalmente async, então precisamos usar um wrapper
     result = loop.run_until_complete(wpp_client.send_message(phone, message))
     print(f"Resultado do envio para {phone}: {result}")
     if result.get('ack', 0) <= 0:
@@ -76,10 +79,9 @@ def task_send_whatsapp_message(phone: str, message: str):
 def task_send_whatsapp_file(phone: str, file_path: str, filename: str):
     """Tarefa que envia um arquivo via WhatsApp."""
     print(f"Processando tarefa: Enviar arquivo {filename} para {phone}")
-    wpp_client = wpp_worker_client.get_client()
+    wpp_client = get_wpp_worker_client().get_client()
     loop = asyncio.get_event_loop()
     result = loop.run_until_complete(wpp_client.send_file(phone, file_path, filename))
-    # Limpa o arquivo temporário após o envio
     if os.path.exists(file_path):
         os.remove(file_path)
         print(f"Arquivo temporário {file_path} removido.")
@@ -106,11 +108,7 @@ def task_send_email(to_email: str, subject: str, html_content: str):
 
 # --- Inicialização do Worker ---
 if __name__ == '__main__':
-    # Garante que o cliente WhatsApp seja inicializado antes de começar a ouvir as tarefas
     print("Iniciando o Worker de Comunicações...")
-    wpp_worker_client = WhatsAppWorkerClient()
-
-    # Conecta-se ao Redis
     listen = ['default']
     redis_conn = from_url(REDIS_URL)
 

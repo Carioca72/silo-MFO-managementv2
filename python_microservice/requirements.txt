@@ -6,3 +6,7 @@ brapi
 groq
 pandas
 pyportfolioopt
+pdfplumber
+yfinance
+python-dotenv
+python-bcb

@@ -81,6 +81,65 @@ export class PortfolioOptimizer {
     return covMatrix;
   }
 
+  public async getEfficientFrontierPoints(assets: AssetData[], riskFreeRate: number): Promise<{ x: number, y: number }[]> {
+    const tickers = assets.map(a => a.ticker);
+    const monthlyQuotes = await marketDataAggregator.getMonthlyQuotes(tickers);
+
+    const MINIMUM_REQUIRED_MONTHS = 36;
+    for (const asset of assets) {
+        const assetData = monthlyQuotes.find(q => q.ticker === asset.ticker);
+        const historyLength = assetData?.history.length || 0;
+        if (historyLength < MINIMUM_REQUIRED_MONTHS) {
+            throw new Error(`Otimização abortada: O ativo '${asset.ticker}' possui apenas ${historyLength} meses de histórico. O mínimo requerido é ${MINIMUM_REQUIRED_MONTHS}.`);
+        }
+    }
+
+    const { prices: priceMatrix } = createPriceMatrix(monthlyQuotes);
+
+    const orderedReturns: number[][] = [];
+    const validAssets: AssetData[] = [];
+    assets.forEach(asset => {
+        const prices = priceMatrix[asset.ticker];
+        if (prices && prices.length > 0) {
+            orderedReturns.push(this.calculateReturns(prices));
+            validAssets.push(asset);
+        }
+    });
+
+    if (validAssets.length < 2) {
+        return [];
+    }
+
+    const stats = orderedReturns.map(r => this.calculateStats(r));
+    const expectedReturns = stats.map(s => s.mean);
+    const covMatrix = this.calculateCovariance(orderedReturns);
+
+    const numPortfolios = 5000;
+    const frontierPoints: { x: number, y: number }[] = [];
+
+    for (let i = 0; i < numPortfolios; i++) {
+      let weights = validAssets.map(() => Math.random());
+      const sum = weights.reduce((a, b) => a + b, 0);
+      weights = weights.map(w => w / sum);
+
+      const portReturn = weights.reduce((acc, w, idx) => acc + w * expectedReturns[idx], 0);
+
+      let variance = 0;
+      for (let j = 0; j < validAssets.length; j++) {
+        for (let k = 0; k < validAssets.length; k++) {
+          variance += weights[j] * weights[k] * covMatrix[j][k];
+        }
+      }
+      const portVol = Math.sqrt(variance);
+
+      if (isFinite(portReturn) && isFinite(portVol)) {
+          frontierPoints.push({ y: portReturn, x: portVol });
+      }
+    }
+
+    return frontierPoints;
+  }
+
   public async optimize(assets: AssetData[], riskFreeRate: number, targetReturn: number = 0.15): Promise<PortfolioScenario[]> {
     // 1. Fetch Monthly Data
     const tickers = assets.map(a => a.ticker);
@@ -96,15 +155,14 @@ export class PortfolioOptimizer {
         }
     }
 
-    // 3. Criar Matriz de Preços (sem preenchimento de dados)
-    const priceMatrix = createPriceMatrix(monthlyQuotes);
-    // REMOVIDO: const filledPrices = fillMissingData(priceMatrix);
-
-    // 4. Calcular Retornos
+    // 3. Criar Matriz de Preços e Calcular Retornos (CORRIGIDO para B-03)
+    const { prices: priceMatrix } = createPriceMatrix(monthlyQuotes);
     const orderedReturns: number[][] = [];
     assets.forEach(asset => {
         const prices = priceMatrix[asset.ticker];
-        // A validação do Gatekeeper garante que prices existe e tem comprimento suficiente.
+        if (!prices) {
+             throw new Error(`Internal Error: Price history for ${asset.ticker} is missing after gatekeeper validation.`);
+        }
         orderedReturns.push(this.calculateReturns(prices));
     });
 
@@ -149,7 +207,6 @@ export class PortfolioOptimizer {
 
       // Validação de Robustez dentro do Loop
       if (!isFinite(portReturn) || !isFinite(portVol) || !isFinite(sharpe)) {
-          // Loga um aviso mas não para a simulação inteira, apenas descarta este resultado.
           console.warn(`Simulação ${i} resultou em valores inválidos (ret: ${portReturn}, vol: ${portVol}). Pesos: ${weights}. Pulando.`);
           continue;
       }

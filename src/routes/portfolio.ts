@@ -1,5 +1,5 @@
 import express from 'express';
-import { bacenIntegration } from '../services/market/bacenIntegration.js';
+import { bacenIntegration } from '../services/integration/bacenIntegration.js';
 import { dataFetcher } from '../services/market/dataFetcher.js';
 import { portfolioOptimizer } from '../services/math/portfolioOptimizer.js';
 import { backtestEngine } from '../services/analysis/backtestEngine.js';
@@ -16,8 +16,12 @@ router.post('/analyze', async (req, res) => {
   }
 
   try {
-    // 1. Get Risk Free Rate
-    const riskFreeRate = await bacenIntegration.getRiskFreeRate();
+    // 1. Get Risk Free Rate (FIX B-10)
+    const selicRate = await bacenIntegration.getSelicRate();
+    if (selicRate === null) {
+        return res.status(500).json({ error: 'Could not retrieve the SELIC rate from BACEN.' });
+    }
+    const riskFreeRate = selicRate; // Use SELIC as the risk-free rate.
 
     // 2. Fetch Market Data (Used for basic stats, but optimizer now fetches its own monthly data)
     const assetData = await dataFetcher.fetchMarketData(tickers);
@@ -31,7 +35,11 @@ router.post('/analyze', async (req, res) => {
     const frontier = await portfolioOptimizer.getEfficientFrontierPoints(assetData, riskFreeRate);
 
     // 4. Backtest (using the Max Sharpe portfolio as the "Selected" one for demo)
-    const bestScenario = scenarios[0]; // Max Sharpe
+    const bestScenario = scenarios.find(s => s.name === 'Max Sharpe Ratio');
+    if (!bestScenario) {
+        return res.status(500).json({ error: 'Max Sharpe Ratio scenario not found after optimization.' });
+    }
+
     const backtestResult = await backtestEngine.run(
         bestScenario.weights,
         tickers,
@@ -52,7 +60,7 @@ router.post('/analyze', async (req, res) => {
     });
 
     res.json({
-      riskFreeRate,
+      risk_free_rate: riskFreeRate, // (FIX B-10)
       scenarios,
       frontier,
       backtest: backtestResult

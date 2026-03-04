@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y tesseract-ocr poppler-utils git
 # Copia o arquivo de dependências do Python para o container
 COPY ./requirements.txt /app/requirements.txt
 
-# Instala as dependências do Python
+# Instala as dependências do Python (Fix B-15)
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copia todo o código da aplicação para o diretório de trabalho
