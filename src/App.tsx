@@ -6,6 +6,7 @@ import Layout from "./components/Layout";
 import AdvisorPage from "./components/advisor/AdvisorPage";
 import WhatsAppManager from "./components/whatsapp/WhatsAppManager";
 import StudyGenerator from "./components/reports/StudyGenerator";
+import { ThemeProvider } from "./components/theme-provider"; // Importando o ThemeProvider
 
 // Configuração do React Query Client
 const queryClient = new QueryClient();
@@ -36,9 +37,10 @@ const router = createBrowserRouter([
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      {/* O ThemeProvider do shadcn aplicaria o tema aqui, mas estamos definindo no CSS */}
-      <Toaster position="top-right" richColors />
-      <RouterProvider router={router} />
+      <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
+        <Toaster position="top-right" richColors />
+        <RouterProvider router={router} />
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }

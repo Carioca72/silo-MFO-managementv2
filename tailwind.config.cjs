@@ -1,3 +1,5 @@
+const animate = require("tailwindcss-animate")
+
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   darkMode: ["class"],
@@ -18,8 +20,8 @@ module.exports = {
     extend: {
       colors: {
         silo: {
-          gold: '#C9A84C',       // Nosso dourado institucional
-          dark: '#1A1A2E',       // Nosso azul escuro/preto
+          gold: '#C9A84C',
+          dark: '#1A1A2E',
         },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
@@ -62,12 +64,12 @@ module.exports = {
       },
       keyframes: {
         "accordion-down": {
-          from: { height: 0 },
+          from: { height: '0' },
           to: { height: "var(--radix-accordion-content-height)" },
         },
         "accordion-up": {
           from: { height: "var(--radix-accordion-content-height)" },
-          to: { height: 0 },
+          to: { height: '0' },
         },
       },
       animation: {
@@ -76,5 +78,5 @@ module.exports = {
       },
     },
   },
-  plugins: [require("tailwindcss-animate")],
+  plugins: [animate],
 }
