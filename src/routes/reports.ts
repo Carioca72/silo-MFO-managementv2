@@ -1,105 +1,167 @@
-import express from 'express';
-import { COMDINHEIRO_ENDPOINTS } from '../services/comdinheiro/endpoints.js';
+
+import { Router } from 'express';
+import { prisma } from '../lib/prisma';
 import { generateSiloPDF } from '../services/pdf/siloReportPDF.js';
 
-const router = express.Router();
+const router = Router();
 
-let reports: any[] = [
- {id:'r1',nome:'Relatório Mensal — Família Andrade',tipo:'relatorio',
- clientId:'1',clientNome:'Família Andrade',
- tools:['ExtratoCarteira022','Value_at_Risk001'],
- status:'enviado',createdAt:'2026-02-28T09:00:00Z',
- sends:[{channel:'email',status:'sent'},{channel:'whatsapp',status:'sent'}]},
- {id:'r2',nome:'Estudo — Dr. Vasconcelos',tipo:'estudo',
- clientId:'p1',clientNome:'Dr. Eduardo Vasconcelos',
- tools:['Markowitz001','Value_at_Risk001'],
- status:'gerado',createdAt:'2026-02-25T11:00:00Z',sends:[]},
-];
+// Rota para gerar um novo relatório associado a um estudo
+router.post('/generate', async (req, res) => {
+  const { studyId, format = 'PDF' } = req.body;
 
-router.get('/', (req,res) => {
- const {clientId,tipo,status,page=1,limit=20} = req.query;
- let f = [...reports];
- if (clientId) f=f.filter(r=>r.clientId===clientId);
- if (tipo) f=f.filter(r=>r.tipo===tipo);
- if (status) f=f.filter(r=>r.status===status);
- const off = (Number(page)-1)*Number(limit);
- res.json({data:f.slice(off,off+Number(limit)),total:f.length,page:Number(page)});
+  if (!studyId) {
+    return res.status(400).json({ message: 'O ID do estudo (studyId) é obrigatório.' });
+  }
+
+  try {
+    // 1. Verificar se o estudo pai existe
+    const study = await prisma.study.findUnique({
+      where: { id: studyId },
+      include: { client: true }, // Inclui dados do cliente para o PDF
+    });
+
+    if (!study) {
+      return res.status(404).json({ message: 'Estudo não encontrado.' });
+    }
+
+    // 2. Criar o registro do relatório no banco de dados
+    const report = await prisma.report.create({
+      data: {
+        studyId: studyId,
+        format: format,
+        // storagePath será preenchido após a geração do arquivo
+      },
+    });
+
+    // 3. Atualizar o status do estudo para 'Em Andamento'
+    await prisma.study.update({
+      where: { id: studyId },
+      data: { status: 'Em Andamento' },
+    });
+
+    // 4. Disparar a geração do PDF em segundo plano
+    (async () => {
+      try {
+        // Simulação de dados para o PDF a partir dos dados do estudo
+        // TODO: Substituir por dados reais do estudo quando disponíveis em `study.result`
+        const pdfData = {
+          clientName: study.client.name,
+          portfolio: `Carteira de ${study.client.name}`,
+          period: new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }),
+          aum: 'R$ 10.0M', // Exemplo
+          retorno12m: '10.5%', // Exemplo
+          retornoMes: '1.2%', // Exemplo
+          var95: '1.5%', // Exemplo
+          sharpe: '1.8', // Exemplo
+          narrative: 'A carteira teve um desempenho robusto este mês...', // Exemplo
+          sections: [], // Adicionar seções se necessário
+          reportType: study.type,
+        };
+
+        const pdfPath = await generateSiloPDF(pdfData);
+
+        // 5. Sucesso: Atualizar o relatório com o caminho do arquivo e o estudo como 'Concluído'
+        await prisma.report.update({
+          where: { id: report.id },
+          data: { storagePath: pdfPath },
+        });
+        await prisma.study.update({
+          where: { id: studyId },
+          data: { status: 'Concluído' },
+        });
+
+        console.log(`[Report] PDF gerado com sucesso para o estudo ${studyId} em ${pdfPath}`);
+
+      } catch (error) {
+        // 6. Erro: Atualizar o status do estudo para 'Erro'
+        await prisma.study.update({
+          where: { id: studyId },
+          data: { status: 'Erro' },
+        });
+        console.error(`[Report] Falha ao gerar PDF para o estudo ${studyId}:`, error);
+      }
+    })();
+
+    // 7. Retornar o relatório recém-criado (sem bloquear a resposta)
+    return res.status(202).json(report);
+
+  } catch (error) {
+    console.error('Falha ao iniciar a geração do relatório:', error);
+    return res.status(500).json({ message: 'Falha interna ao processar a solicitação do relatório.' });
+  }
 });
 
-router.get('/:id', (req,res) => {
- const r = reports.find(r=>r.id===req.params.id);
- if (!r) return res.status(404).json({error:'Não encontrado'});
- res.json(r);
+// Rota para buscar todos os relatórios (com paginação)
+router.get('/', async (req, res) => {
+  const { studyId, page = 1, limit = 20 } = req.query;
+  const pageNum = parseInt(page as string, 10);
+  const limitNum = parseInt(limit as string, 10);
+  const skip = (pageNum - 1) * limitNum;
+
+  try {
+    const whereClause: any = {};
+    if (studyId) {
+      whereClause.studyId = studyId as string;
+    }
+
+    const [reports, total] = await prisma.$transaction([
+      prisma.report.findMany({
+        where: whereClause,
+        skip: skip,
+        take: limitNum,
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.report.count({ where: whereClause }),
+    ]);
+
+    return res.status(200).json({
+      data: reports,
+      total,
+      page: pageNum,
+      totalPages: Math.ceil(total / limitNum),
+    });
+  } catch (error) {
+    console.error('Falha ao buscar relatórios:', error);
+    return res.status(500).json({ message: 'Falha ao buscar relatórios.' });
+  }
 });
 
-router.post('/generate', async (req,res) => {
- const {clientId,tools,reportName,tipo='relatorio'} = req.body;
- if (!clientId||!tools?.length)
- return res.status(400).json({error:'clientId e tools obrigatórios'});
- 
- const r: any = {
- id:'r'+Date.now(),
- nome:reportName||`Relatorio ${new Date().toLocaleDateString('pt-BR')}`,
- tipo, clientId, tools, status:'gerando',
- createdAt:new Date().toISOString(),
- narrative:'Gerando com SILO Advisor IA...', sends:[], pdfPath:null,
- };
- reports.unshift(r);
- 
- // Gera PDF em background sem bloquear resposta
- (async () => {
- try {
- const pdfPath = await generateSiloPDF({
- clientName: 'Cliente ' + clientId,
- portfolio: 'portfolio_' + clientId,
- period: new Date().toLocaleDateString('pt-BR',{month:'long',year:'numeric'}),
- aum:'R$ 12,4M', retorno12m:'8.2%', retornoMes:'1.4%',
- var95:'1.1%', sharpe:'1.42',
- narrative: 'A carteira apresentou performance acima do CDI. ' +
- 'Retorno de +8.2% nos ultimos 12 meses. VaR de 1.1% dentro dos limites.',
- sections: tools.map((t:string) => ({title:t, type:'chart_placeholder', content:''})),
- reportType: tipo,
- });
- r.status = 'gerado'; r.pdfPath = pdfPath;
- r.narrative = 'Relatorio gerado com sucesso.';
- 
- const io = (global as any).io;
- if (io) io.emit('report:generated', {reportId:r.id, pdfPath, clientId});
- } catch(err) {
- r.status = 'error';
- console.error('[Report] Erro ao gerar PDF:', err);
- }
- })();
- 
- res.status(201).json(r);
+// Rota para buscar um relatório específico por ID
+router.get('/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const report = await prisma.report.findUnique({
+      where: { id },
+      include: { study: true }, // Incluir o estudo pai
+    });
+
+    if (!report) {
+      return res.status(404).json({ message: 'Relatório não encontrado.' });
+    }
+    return res.status(200).json(report);
+  } catch (error) {
+    console.error(`Falha ao buscar o relatório ${id}:`, error);
+    return res.status(500).json({ message: 'Falha ao buscar o relatório.' });
+  }
 });
 
-// GET /api/reports/:id/pdf
-router.get('/:id/pdf', (req,res) => {
- const r = reports.find(r=>r.id===req.params.id);
- if (!r?.pdfPath) return res.status(404).json({error:'PDF nao gerado ainda'});
- res.download(r.pdfPath);
-});
+// Rota para fazer o download do PDF de um relatório
+router.get('/:id/pdf', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const report = await prisma.report.findUnique({ where: { id } });
 
-router.post('/:id/send', (req,res) => {
- const {channels,clientId} = req.body;
- const r = reports.find(r=>r.id===req.params.id);
- if (!r) return res.status(404).json({error:'Não encontrado'});
- 
- const sends = channels.map((ch:string)=>
- ({channel:ch,status:'queued',ts:new Date().toISOString()}));
- 
- r.sends.push(...sends); r.status='enviado';
- 
- const io = (global as any).io;
- if (io) io.emit('report:sent',{reportId:r.id,channels,clientId});
- 
- res.json({success:true,sends});
-});
+        if (!report || !report.storagePath) {
+            return res.status(404).json({ message: 'PDF não encontrado ou ainda não foi gerado.' });
+        }
 
-router.delete('/:id', (req,res) => {
- reports=reports.filter(r=>r.id!==req.params.id);
- res.json({success:true});
+        // A função res.download lida com a definição dos headers corretos
+        res.download(report.storagePath);
+
+    } catch (error) {
+        console.error(`Falha ao fazer o download do PDF para o relatório ${id}:`, error);
+        return res.status(500).json({ message: 'Não foi possível fazer o download do arquivo.' });
+    }
 });
 
 export default router;

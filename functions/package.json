@@ -2,7 +2,7 @@
   "name": "functions",
   "description": "Backend do Silo MFO como Cloud Functions",
   "scripts": {
-    "build": "tsc",
+    "build": "prisma generate && tsc",
     "serve": "firebase emulators:start --only functions",
     "shell": "firebase functions:shell",
     "start": "npm run shell",
