@@ -1,6 +1,7 @@
+// prisma/schema.prisma
 datasource db {
-  provider = "sqlite"
-  url      = "file:./dev.db"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 generator client {
@@ -19,31 +20,61 @@ model Client {
   id        String   @id @default(cuid())
   name      String
   email     String   @unique
+  cnpj      String?
+  phone     String?
+  aum       Float    @default(0)
+  riskProfile String @default("Moderado")
   studies   Study[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 model Study {
-  id          String   @id @default(cuid())
-  name        String
-  client      Client   @relation(fields: [clientId], references: [id])
-  clientId    String
-  type        String   // Ex: "Estudo de Carteira", "Relatório de Resultados"
-  status      String   // Ex: "Concluído", "Em Andamento", "Erro"
-  inputFile   String?  // Path para o arquivo de input (ex: CEI)
-  result      Json?    // Resultados da análise (Markowitz, etc)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  Report      Report[]
+  id         String   @id @default(cuid())
+  name       String
+  client     Client   @relation(fields: [clientId], references: [id])
+  clientId   String
+  type       String   // "Estudo de Carteira" | "Relatório de Resultados"
+  status     String   // "Concluído" | "Em Andamento" | "Erro"
+  inputFile  String?
+  result     Json?
+  reports    Report[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
 model Report {
-  id        String   @id @default(cuid())
-  study     Study    @relation(fields: [studyId], references: [id])
+  id          String   @id @default(cuid())
+  study       Study    @relation(fields: [studyId], references: [id])
+  studyId     String
+  format      String   // "PDF" | "XLSX"
+  storagePath String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model PortfolioStudy {
+  id             String   @id @default(cuid())
+  tickers        String[]
+  weights        Json
+  benchmark      String
+  targetReturn   Float?
+  expectedReturn Float
+  volatility     Float
+  sharpeRatio    Float
+  backtestReturn Float
+  maxDrawdown    Float
+  createdAt      DateTime @default(now())
+  snapshots      AssetSnapshot[]
+}
+
+model AssetSnapshot {
+  id        String         @id @default(cuid())
+  study     PortfolioStudy @relation(fields: [studyId], references: [id])
   studyId   String
-  format    String   // Ex: "PDF", "DOCX"
-  storagePath String // Path para o arquivo gerado
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  ticker    String
+  price     Float
+  currency  String         @default("BRL")
+  fxRate    Float          @default(1.0)
+  createdAt DateTime       @default(now())
 }

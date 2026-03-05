@@ -4,63 +4,35 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
-const clientService_js_1 = require("../services/crm/clientService.js");
 const router = express_1.default.Router();
-// GET /api/clients
-router.get('/', async (req, res) => {
-    try {
-        const clients = await clientService_js_1.clientService.getAll();
-        res.json(clients);
-    }
-    catch (error) {
-        console.error('Error in GET /api/clients:', error);
-        res.status(500).json({ error: 'Failed to retrieve clients.' });
-    }
+// Mock data that was previously in the frontend
+const MOCK_CLIENTS = [
+    { id: '1', nome: 'Família Andrade', cnpj: '12.345.678/0001-90', portfolio: 'andrade_main', email: 'gestao@andrade.com.br', telefone: '+55 81 99999-0001', aum: 'R$ 12,4M', perfil: 'Moderado' },
+    { id: '2', nome: 'Instituto Brennand', cnpj: '23.456.789/0001-12', portfolio: 'brennand_fundo', email: 'financeiro@brennand.org', telefone: '+55 81 99999-0002', aum: 'R$ 8,7M', perfil: 'Conservador' },
+    { id: '3', nome: 'Holding Cerqueira', cnpj: '34.567.890/0001-23', portfolio: 'cerqueira_holding', email: 'diretoria@cerqueira.com', telefone: '+55 81 99999-0003', aum: 'R$ 21,3M', perfil: 'Arrojado' },
+    { id: '4', nome: 'Família Magalhães', cnpj: '56.789.012/0001-45', portfolio: 'magalhaes_fam', email: 'patrimonial@magalhaes.com', telefone: '+55 81 99999-0005', aum: 'R$ 15,8M', perfil: 'Moderado' },
+];
+// GET /api/clients - Now returns the mock data
+router.get('/', (req, res) => {
+    res.json(MOCK_CLIENTS);
 });
-// GET /api/clients/:id
-router.get('/:id', async (req, res) => {
+// GET /api/clients/:id - Also uses mock data
+router.get('/:id', (req, res) => {
     const { id } = req.params;
-    try {
-        const client = await clientService_js_1.clientService.getById(id);
-        if (client) {
-            res.json(client);
-        }
-        else {
-            res.status(404).json({ error: `Client with id ${id} not found` });
-        }
+    const client = MOCK_CLIENTS.find(c => c.id === id);
+    if (client) {
+        res.json(client);
     }
-    catch (error) {
-        console.error(`Error in GET /api/clients/${id}:`, error);
-        res.status(500).json({ error: 'Failed to retrieve client.' });
+    else {
+        res.status(404).json({ error: `Client with id ${id} not found` });
     }
 });
-// BUG-013: Adicionar endpoint de deleção de cliente
-router.delete('/:id', async (req, res) => {
-    const { id } = req.params;
-    try {
-        const result = await clientService_js_1.clientService.deleteById(id);
-        if (result.success) {
-            res.status(204).send(); // Sucesso, sem conteúdo
-        }
-        else {
-            // Se a mensagem indicar que não foi encontrado, retorna 404
-            if (result.message && result.message.includes('não encontrado')) {
-                res.status(404).json({ error: result.message });
-            }
-            else {
-                // Outros erros de serviço
-                res.status(500).json({ error: result.message || 'Falha ao deletar o cliente.' });
-            }
-        }
-    }
-    catch (error) {
-        console.error(`Error in DELETE /api/clients/${id}:`, error);
-        res.status(500).json({ error: 'Falha interna ao tentar deletar o cliente.' });
-    }
+// Dummy endpoints to prevent errors, they don't do anything.
+router.delete('/:id', (req, res) => {
+    res.status(204).send();
 });
-// POST /api/clients/sync
 router.post('/sync', (req, res) => {
-    res.json({ synced: 5, created: 1, updated: 4, lastSync: new Date() });
+    res.json({ synced: 4, created: 0, updated: 4, lastSync: new Date() });
 });
 exports.default = router;
 //# sourceMappingURL=clients.js.map

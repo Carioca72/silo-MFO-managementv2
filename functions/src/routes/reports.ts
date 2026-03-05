@@ -1,71 +1,76 @@
 import { Router } from 'express';
+import { prisma } from '../lib/prisma';
 
 const router = Router();
 
-// --- Mock Data for Markowitz Analysis ---
-const mockMarkowitzResult = {
-  analysisType: 'Markowitz001',
-  efficientFrontier: [
-    { risk: 0.05, return: 0.08, label: 'P1' },
-    { risk: 0.07, return: 0.12, label: 'P2' },
-    { risk: 0.10, return: 0.15, label: 'P_Otimo' },
-    { risk: 0.15, return: 0.18, label: 'P4' },
-    { risk: 0.20, return: 0.20, label: 'P5' },
-  ],
-  optimalPortfolio: {
-    risk: 0.10,
-    return: 0.15,
-    sharpe: 1.5,
-    allocation: [
-      { asset: 'Ações Nacionais', ticker: 'BOVA11', weight: 0.40 },
-      { asset: 'Renda Fixa Global', ticker: 'BNDW', weight: 0.30 },
-      { asset: 'Ações Internacionais', ticker: 'IVV', weight: 0.20 },
-      { asset: 'Ouro', ticker: 'GOLD11', weight: 0.10 },
-    ]
-  },
-  summary: 'A carteira ótima, com Sharpe de 1.5, foi encontrada com 10% de risco e 15% de retorno. A alocação sugerida prioriza Ações Nacionais (40%) e Renda Fixa Global (30%).'
-};
+// POST /api/reports/generate - Cria um novo registro de relatório
+router.post('/generate', async (req, res) => {
+  const { studyId, format } = req.body; // Espera-se 'PDF' ou 'XLSX'
 
+  if (!studyId || !format) {
+    return res.status(400).json({ message: 'studyId and format are required.' });
+  }
 
-// POST /api/reports/generate - Generate a new report
-router.post('/generate', (req, res) => {
-  const { tools } = req.body;
+  try {
+    // Verifica se o estudo correspondente existe
+    const study = await prisma.study.findUnique({ where: { id: studyId } });
+    if (!study) {
+      return res.status(404).json({ message: 'Study not found.' });
+    }
 
-  if (tools && tools.includes('mkw001')) {
-    console.log('Ferramenta Markowitz detectada. Retornando análise simulada.');
-    setTimeout(() => {
-      res.status(200).json({
-        message: 'Análise de Markowitz concluída com sucesso!',
-        reportId: `rep_mkw_${new Date().getTime()}`,
-        status: 'completed',
-        result: mockMarkowitzResult 
-      });
-    }, 2000);
-  } else {
-    res.status(200).json({ 
-      message: 'Solicitação de geração de relatório recebida com sucesso!',
-      reportId: `rep_${new Date().getTime()}`,
-      status: 'in_progress'
+    // Cria o novo relatório no banco de dados
+    const newReport = await prisma.report.create({
+      data: {
+        studyId,
+        format,
+        status: 'Pending', // O status real seria atualizado por um processo de geração
+      },
     });
+
+    return res.status(202).json({
+      message: 'Solicitação de geração de relatório recebida!',
+      reportId: newReport.id,
+      status: newReport.status,
+    });
+
+  } catch (error) {
+    console.error('Failed to generate report request:', error);
+    return res.status(500).json({ message: 'Failed to request report generation' });
   }
 });
 
-// GET /api/reports/:id - Retrieve details for a specific report
-router.get('/:id', (req, res) => {
+// GET /api/reports/:id - Recupera detalhes de um relatório específico
+router.get('/:id', async (req, res) => {
   const { id } = req.params;
-  console.log(`Buscando detalhes para o relatório ${id}`);
 
-  // In a real application, you would fetch the report from a database.
-  // For now, we return the same mock Markowitz result for any valid-looking ID.
-  if (id.startsWith('rep_mkw')) {
-    res.status(200).json({
-      message: 'Detalhes do relatório recuperados com sucesso.',
-      reportId: id,
-      status: 'completed',
-      result: mockMarkowitzResult
+  try {
+    const report = await prisma.report.findUnique({
+      where: { id },
+      include: {
+        study: true, // Inclui o estudo pai para acessar o resultado da análise
+      },
     });
-  } else {
-    res.status(404).json({ message: `Relatório com ID ${id} não encontrado.` });
+
+    if (!report) {
+      return res.status(404).json({ message: `Relatório com ID ${id} não encontrado.` });
+    }
+
+    // Monta a resposta combinando dados do relatório e o resultado do estudo
+    // para manter a compatibilidade com o que o frontend esperava do mock.
+    const response = {
+      message: 'Detalhes do relatório recuperados com sucesso.',
+      reportId: report.id,
+      status: report.status,
+      result: report.study.result, // Pega o JSON de resultado do estudo pai
+      createdAt: report.createdAt,
+      studyId: report.studyId,
+    };
+
+    return res.status(200).json(response);
+
+  } catch (error) {
+    console.error(`Failed to retrieve report ${id}:`, error);
+    return res.status(500).json({ message: 'Failed to retrieve report' });
   }
 });
 

@@ -1,110 +1,105 @@
 import { Router } from 'express';
+import { prisma } from '../lib/prisma';
+import { Study, Client } from '@prisma/client'; // Importa os tipos
 
 const router = Router();
 
-// --- Mock de Dados Detalhado para um Estudo Específico ---
-const detailedStudyMock = {
-  id: 'clwvc7e53000008l71cl93t7a',
-  name: 'Análise de Carteira XP - Março/2024',
-  clientName: 'João da Silva',
-  type: 'Estudo de Carteira',
-  status: 'Concluído',
-  createdAt: '2024-03-15T10:30:00.000Z',
-  analysisResult: {
-    original_filename: 'XP_Mar2024.pdf',
-    diagnostics: [
-      'Concentração elevada no ativo FII XPTO11 (35%).',
-      'Baixa exposição a mercados internacionais (5%).',
-      'Índice de Sharpe abaixo do benchmark (0.8 vs 1.2 CDI).',
-      'Potencial de otimização via diversificação em Renda Fixa Global.'
-    ],
-    current_scenario: {
-      portfolio: [
-        { name: 'Renda Fixa Pós', value: 250000, category: 'RF' },
-        { name: 'FII XPTO11', value: 350000, category: 'FII' },
-        { name: 'Ações Nacionais', value: 200000, category: 'RV' },
-        { name: 'Ações Internacionais', value: 50000, category: 'RV Int' },
-        { name: 'Caixa', value: 150000, category: 'Caixa' },
-      ],
-      aggregated_indicators: {
-        retorno_anual: 0.10,
-        volatilidade_anual: 0.12,
-        sharpe: 0.8,
+// Definição de tipo para o estudo formatado, incluindo o cliente
+type FormattedStudy = Study & { client: Client };
+
+// Rota para buscar todos os estudos
+router.get('/', async (_req, res) => {
+  try {
+    const studies = await prisma.study.findMany({
+      include: {
+        client: true,
       },
-      projections: [ { month: 0, value: 100 }, { month: 12, value: 110 } ]
-    },
-    new_scenario: {
-       portfolio: [
-        { name: 'Renda Fixa Pós', value: 200000, category: 'RF' },
-        { name: 'Renda Fixa Global', value: 200000, category: 'RF Int' },
-        { name: 'FII XPTO11', value: 150000, category: 'FII' },
-        { name: 'Ações Nacionais', value: 200000, category: 'RV' },
-        { name: 'Ações Internacionais', value: 200000, category: 'RV Int' },
-        { name: 'Caixa', value: 50000, category: 'Caixa' },
-      ],
-      aggregated_indicators: {
-        retorno_anual: 0.14,
-        volatilidade_anual: 0.11,
-        sharpe: 1.25,
+      orderBy: {
+        createdAt: 'desc',
       },
-      projections: [ { month: 0, value: 100 }, { month: 12, value: 114 } ]
-    },
-    comparison_summary: {},
-  },
-};
+    });
 
-// A lista principal agora só precisa de resumos
-const mockStudies = [
-  {
-    id: 'clwvc7e53000008l71cl93t7a',
-    name: 'Análise de Carteira XP - Março/2024',
-    clientName: 'João da Silva',
-    type: 'Estudo de Carteira',
-    status: 'Concluído',
-    createdAt: '2024-03-15T10:30:00.000Z',
-    analysisResult: { original_filename: 'XP_Mar2024.pdf' },
-  },
-  // ... outros estudos resumidos ...
-];
+    // Garante a tipagem correta no map
+    const formattedStudies = studies.map((study: FormattedStudy) => ({
+      ...study,
+      clientName: study.client.name,
+    }));
 
-// --- Rotas ---
-
-// GET /api/studies - Retorna a lista de resumos
-router.get('/', (_req, res) => res.status(200).json(mockStudies));
-
-// GET /api/studies/:id - Retorna o estudo *detalhado* completo
-router.get('/:id', (req, res) => {
-  if (req.params.id === detailedStudyMock.id) {
-    res.status(200).json(detailedStudyMock);
-  } else {
-    res.status(404).json({ message: 'Study not found.' });
+    return res.status(200).json(formattedStudies);
+  } catch (error) {
+    console.error('Failed to retrieve studies:', error);
+    return res.status(500).json({ message: 'Failed to retrieve studies' });
   }
 });
 
-// PATCH /api/studies/:id
-router.patch('/:id', (req, res) => {
+// Rota para buscar um estudo específico por ID
+router.get('/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const study = await prisma.study.findUnique({
+      where: { id },
+      include: {
+        client: true,
+      },
+    });
+
+    if (!study) {
+      return res.status(404).json({ message: 'Study not found.' });
+    }
+
+    const formattedStudy = {
+      ...study,
+      clientName: study.client.name,
+      analysisResult: study.result,
+    };
+
+    return res.status(200).json(formattedStudy);
+  } catch (error) {
+    console.error(`Failed to retrieve study ${id}:`, error);
+    return res.status(500).json({ message: 'Failed to retrieve study' });
+  }
+});
+
+// Rota para atualizar o nome de um estudo
+router.patch('/:id', async (req, res) => {
+  const { id } = req.params;
   const { name } = req.body;
-  if (!name) return res.status(400).json({ message: 'New name is required.' });
-  const studyIndex = mockStudies.findIndex(s => s.id === req.params.id);
-  if (studyIndex !== -1) {
-    mockStudies[studyIndex].name = name;
-    res.status(200).json(mockStudies[studyIndex]);
-  } else {
-    res.status(404).json({ message: 'Study not found.' });
+
+  if (!name) {
+    return res.status(400).json({ message: 'New name is required.' });
+  }
+
+  try {
+    const updatedStudy = await prisma.study.update({
+      where: { id },
+      data: { name },
+    });
+    return res.status(200).json(updatedStudy);
+  } catch (error) {
+    // Verifica o código de erro do Prisma de forma segura
+    if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2025') {
+      return res.status(404).json({ message: 'Study not found.' });
+    }
+    console.error(`Failed to update study ${id}:`, error);
+    return res.status(500).json({ message: 'Failed to update study' });
   }
 });
 
-// POST /api/studies/:id/reanalyze
-router.post('/:id/reanalyze', (req, res) => {
-  const studyIndex = mockStudies.findIndex(s => s.id === req.params.id);
-  if (studyIndex !== -1) {
-    mockStudies[studyIndex].status = 'Em Andamento';
-    res.status(202).json(mockStudies[studyIndex]);
-    setTimeout(() => {
-      mockStudies[studyIndex].status = 'Concluído';
-    }, 4000);
-  } else {
-    res.status(404).json({ message: 'Study not found.' });
+// Rota para disparar uma nova análise (apenas atualiza o status)
+router.post('/:id/reanalyze', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const study = await prisma.study.update({
+      where: { id },
+      data: { status: 'Em Andamento' },
+    });
+    return res.status(202).json(study);
+  } catch (error) {
+    if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2025') {
+      return res.status(404).json({ message: 'Study not found.' });
+    }
+    console.error(`Failed to reanalyze study ${id}:`, error);
+    return res.status(500).json({ message: 'Failed to reanalyze study' });
   }
 });
 

@@ -1,9 +1,6 @@
-
 import * as functions from 'firebase-functions';
 import express, { Express } from 'express';
-import dotenv from 'dotenv';
 import cors from 'cors';
-import path from 'path'; // Importado para lidar com caminhos de arquivo
 
 // Import all routes
 import studyRoutes from './routes/study';
@@ -18,25 +15,19 @@ import reportsRoutes from './routes/reports';
 import toolsRoutes from './routes/tools';
 import triggersRoutes from './routes/triggers';
 
-dotenv.config();
-
 const app: Express = express();
 
 // Middlewares
 app.use(cors({ origin: true }));
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Servir arquivos estáticos do build do frontend
-// Isso garante que o servidor possa encontrar os JS, CSS, e outros assets.
-app.use(express.static(path.join(__dirname, '..", 'public')));
-
-// Rota de Teste da API
-app.get('/api/test', (_req, res) => {
-  res.send('Servidor FinAssist API está no ar!');
+// Health check
+app.get('/api/health', (_req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Register all API routes under /api
+// Register all API routes
 app.use('/api/studies', studyRoutes);
 app.use('/api/advisor', advisorRoutes);
 app.use('/api/automation', automationRoutes);
@@ -49,14 +40,10 @@ app.use('/api/reports', reportsRoutes);
 app.use('/api/tools', toolsRoutes);
 app.use('/api/triggers', triggersRoutes);
 
-// Rota "Catch-All" para lidar com o roteamento do lado do cliente (SPA)
-// DEVE ser a última rota registrada.
-app.get('*_*, (_req, res) => {
-    // Envia o index.html principal para qualquer rota não-API.
-    // O React Router no cliente irá então carregar a página correta.
-    res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
+// 404 handler for unknown API routes
+app.use('/api/*', (_req, res) => {
+  res.status(404).json({ error: 'API endpoint not found' });
 });
 
-
-// Expose the Express API as a single Cloud Function
+// Export as Firebase Cloud Function
 export const api = functions.https.onRequest(app);
