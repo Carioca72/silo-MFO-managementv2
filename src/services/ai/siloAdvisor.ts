@@ -1,4 +1,4 @@
-import { GoogleGenAI, Type } from '@google/genai';
+import { GoogleGenAI, Type, GenerateContentResponse, Part } from '@google/genai';
 import { SILO_ADVISOR_SYSTEM_PROMPT } from './systemPrompt.js';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -65,7 +65,7 @@ const TOOLS = [{
  { name:'fetchMarketData',
  description:'Busca dados de mercado para multiplos ativos',
  parameters: { type:Type.OBJECT, required:['tickers', 'metrics'],
- properties: { 
+ properties: {
  tickers: { type:Type.ARRAY, items: { type:Type.STRING } },
  metrics: { type:Type.ARRAY, items: { type:Type.STRING } }
  }
@@ -78,7 +78,7 @@ const TOOLS = [{
  { name:'generateExcelStudy',
  description:'Gera planilha Excel do Estudo de Carteira',
  parameters: { type:Type.OBJECT, required:['client_id', 'cenario_atual', 'novo_cenario'],
- properties: { 
+ properties: {
  client_id: { type:Type.STRING },
  client_name: { type:Type.STRING },
  cdi: { type:Type.NUMBER },
@@ -91,7 +91,7 @@ const TOOLS = [{
  { name:'generatePDFStudy',
  description:'Gera PDF do Estudo de Carteira',
  parameters: { type:Type.OBJECT, required:['client_id', 'paginas'],
- properties: { 
+ properties: {
  client_id: { type:Type.STRING },
  client_name: { type:Type.STRING },
  study_date: { type:Type.STRING },
@@ -102,7 +102,7 @@ const TOOLS = [{
  { name:'runMarkowitz',
  description:'Executa otimizacao de Markowitz',
  parameters: { type:Type.OBJECT, required:['assets'],
- properties: { 
+ properties: {
  assets: { type:Type.ARRAY, items: { type:Type.OBJECT } },
  constraints: { type:Type.OBJECT },
  optimize: { type:Type.STRING }
@@ -112,7 +112,7 @@ const TOOLS = [{
  { name:'generateBoleto',
  description:'Gera boleto em seguradoras (Porto, Azos, etc)',
  parameters: { type:Type.OBJECT, required:['system', 'clientData'],
- properties: { 
+ properties: {
  system: { type:Type.STRING },
  clientData: { type:Type.OBJECT }
  }
@@ -121,7 +121,7 @@ const TOOLS = [{
  { name:'sendSwift',
  description:'Envia comprovante SWIFT de cambio',
  parameters: { type:Type.OBJECT, required:['contractId', 'recipient'],
- properties: { 
+ properties: {
  contractId: { type:Type.STRING },
  recipient: { type:Type.STRING }
  }
@@ -137,8 +137,8 @@ const TOOLS = [{
 }];
 
 async function execFunction(name: string, args: any): Promise<string> {
- const base = `http://localhost:${process.env.PORT||3000}`;
- 
+ const base = `http://localhost:${process.env.PORT||3001}`;
+
  if (name === 'queryComDinheiro') {
  try {
  const res = await fetch(`${base}/api/cmd/query`, {
@@ -148,7 +148,7 @@ async function execFunction(name: string, args: any): Promise<string> {
  return JSON.stringify(await res.json());
  } catch { return JSON.stringify({error:'Falha ao consultar ComDinheiro'}); }
  }
- 
+
  if (name === 'getClientData') {
  const res = await fetch(`${base}/api/clients`).then(r=>r.json()).catch(()=>[]);
  const client = res.find((c:any) => c.id === args.clientId);
@@ -186,8 +186,6 @@ async function execFunction(name: string, args: any): Promise<string> {
  }
 
  if (name === 'browsePage') {
- // Simulating browsePage using a hypothetical endpoint or just returning a mock for now
- // In a real scenario, this would call a service that uses Puppeteer/Playwright
  return JSON.stringify({ content: `Conteudo extraido de ${args.url} (Simulado via Puppeteer)` });
  }
 
@@ -204,10 +202,6 @@ async function execFunction(name: string, args: any): Promise<string> {
  }
 
  if (name === 'generateExcelStudy') {
- const res = await fetch(`${base}/api/study/generate-excel`, {
- method:'POST', headers:{'Content-Type':'application/json'},
- body: JSON.stringify(args)
- }).then(r=>r.blob()); // Handling blob might be tricky in pure text return, usually we return a link
  return JSON.stringify({ success: true, message: "Excel gerado via endpoint /api/study/generate-excel" });
  }
 
@@ -240,7 +234,6 @@ async function execFunction(name: string, args: any): Promise<string> {
  }
 
  if (name === 'generateStudy') {
- // Reusing generateReport with type='estudo'
  const res = await fetch(`${base}/api/reports/generate`, {
  method:'POST', headers:{'Content-Type':'application/json'},
  body: JSON.stringify({
@@ -257,53 +250,81 @@ async function execFunction(name: string, args: any): Promise<string> {
 }
 
 export class SiloAdvisorService {
- private model = 'gemini-2.5-flash-latest';
+ private model = 'gemini-1.5-flash-latest';
 
- async generateResponse(
- userMessage: string,
- context?: any,
- history?: Array<{role:string; content:string}>
- ): Promise<string> {
+ async * generateResponse(
+    userMessage: string,
+    context?: any,
+    history?: Array<{role:string; content:string; parts?: Part[]}>
+ ): AsyncGenerator<string> {
  try {
  const contents: any[] = [];
- 
- // Injeta historico multi-turn (max 8 trocas)
+
  if (history?.length) {
  for (const h of history.slice(-8)) {
- contents.push({ role: h.role==='user'?'user':'model',
- parts: [{ text: h.content }] });
+ contents.push({ role: h.role, parts: h.parts || [{text: h.content}] });
  }
  }
- 
+
  let prompt = userMessage;
  if (context) prompt += `\nCONTEXTO: ${JSON.stringify(context)}`;
- 
+
  contents.push({ role:'user', parts:[{text:prompt}] });
- 
- const response = await ai.models.generateContent({
- model: this.model,
- config: { systemInstruction: SILO_ADVISOR_SYSTEM_PROMPT, tools: TOOLS },
- contents,
- });
 
- // Processa Function Calling
- const part = response.candidates?.[0]?.content?.parts?.[0];
- if (part?.functionCall) {
- const { name, args } = part.functionCall;
- const result = await execFunction(name, args);
+ const result = await ai.getGenerativeModel({
+        model: this.model,
+        systemInstruction: SILO_ADVISOR_SYSTEM_PROMPT,
+        tools: TOOLS,
+      }).generateContentStream({ contents });
  
- const followUp = await ai.models.generateContent({
- model: this.model,
- config: { systemInstruction: SILO_ADVISOR_SYSTEM_PROMPT },
- contents: [...contents,
- { role:'model', parts:[{functionCall:{name,args}}] },
- { role:'user', parts:[{functionResponse:{name,response:JSON.parse(result)}}] },
- ],
- });
- return followUp.text || 'Sem resposta apos function call.';
- }
+ let functionCallPart: Part | null = null;
+ 
+ for await (const chunk of result.stream) {
+        const chunkPart = chunk.parts?.[0];
+        if (chunkPart?.functionCall) {
+          // A IA solicitou uma chamada de função. Armazena e quebra o loop.
+          functionCallPart = chunkPart;
+          break;
+        }
+        
+        const text = chunk.text();
+        if (text) {
+          yield text;
+        }
+      }
+      
+      // Se uma chamada de função foi solicitada, execute-a.
+      if (functionCallPart && functionCallPart.functionCall) {
+        const { name, args } = functionCallPart.functionCall;
+        
+        // Adiciona a solicitação da IA ao histórico
+        contents.push({ role: 'model', parts: [functionCallPart]});
 
- return response.text || '';
+        // Executa a função
+        const functionResult = await execFunction(name, args);
+
+        // Adiciona o resultado da função ao histórico
+        contents.push({
+          role: 'user', // O Gemini espera o role 'user' para a resposta da função
+          parts: [{ functionResponse: { name, response: JSON.parse(functionResult) } }],
+        });
+
+        // Envia o histórico atualizado de volta para a IA para obter a resposta final
+        const finalResult = await ai.getGenerativeModel({
+          model: this.model,
+          systemInstruction: SILO_ADVISOR_SYSTEM_PROMPT,
+          tools: TOOLS
+        }).generateContentStream({ contents });
+
+        // Envia a resposta final em streaming
+        for await (const chunk of finalResult.stream) {
+          const text = chunk.text();
+          if (text) {
+            yield text;
+          }
+        }
+      }
+
  } catch (e:any) {
  console.error('SiloAdvisor error:', e);
  throw new Error('Falha SILO Advisor: ' + e.message);

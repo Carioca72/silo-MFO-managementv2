@@ -1,4 +1,3 @@
-
 import * as math from 'mathjs';
 import { AssetData } from '../market/dataFetcher.js';
 import { marketDataAggregator } from '../market/marketDataAggregator.js';
@@ -24,7 +23,7 @@ export class PortfolioOptimizer {
   private calculateReturns(history: number[]): number[] {
     const returns: number[] = [];
     for (let i = 1; i < history.length; i++) {
-      // Adicionada validação para evitar divisão por zero se o preço anterior for 0
+      // BUG-008 CORRIGIDO: Adicionada validação para evitar divisão por zero
       if (history[i - 1] === 0) {
           returns.push(0);
       } else {
@@ -52,7 +51,6 @@ export class PortfolioOptimizer {
    */
   private calculateCovariance(assetsReturns: number[][]): number[][] {
     const n = assetsReturns.length;
-    // Lógica de alinhamento removida - a validação prévia garantirá dados consistentes.
     const minLen = assetsReturns[0].length;
         
     const covMatrix: number[][] = Array(n).fill(0).map(() => Array(n).fill(0));
@@ -65,13 +63,12 @@ export class PortfolioOptimizer {
         for (let k = 0; k < minLen; k++) {
           sum += (assetsReturns[i][k] - meanI) * (assetsReturns[j][k] - meanJ);
         }
-        // Validação de Divisão por Zero
         if (minLen - 1 <= 0) {
             throw new Error(`Cálculo de covariância inválido: número de pontos de dados (${minLen}) é insuficiente.`);
         }
-        const covariance = (sum / (minLen - 1)) * 12; // Annualized (Monthly)
+        // BUG-009 VALIDADO: Anualização correta da covariância (multiplicar por 12)
+        const covariance = (sum / (minLen - 1)) * 12; 
         
-        // Validação de NaN/Infinity no resultado
         if (!isFinite(covariance)) {
             throw new Error(`Erro matemático no cálculo da covariância para o par de ativos [${i},${j}]. Resultado: ${covariance}`);
         }
@@ -81,63 +78,35 @@ export class PortfolioOptimizer {
     return covMatrix;
   }
 
-  public async getEfficientFrontierPoints(assets: AssetData[], riskFreeRate: number): Promise<{ x: number, y: number }[]> {
-    const tickers = assets.map(a => a.ticker);
-    const monthlyQuotes = await marketDataAggregator.getMonthlyQuotes(tickers);
-
-    const MINIMUM_REQUIRED_MONTHS = 36;
-    for (const asset of assets) {
-        const assetData = monthlyQuotes.find(q => q.ticker === asset.ticker);
-        const historyLength = assetData?.history.length || 0;
-        if (historyLength < MINIMUM_REQUIRED_MONTHS) {
-            throw new Error(`Otimização abortada: O ativo '${asset.ticker}' possui apenas ${historyLength} meses de histórico. O mínimo requerido é ${MINIMUM_REQUIRED_MONTHS}.`);
+  // BUG-011 e BUG-012 CORRIGIDOS AQUI
+  public async getEfficientFrontierPoints(
+    assets: AssetData[], 
+    riskFreeRate: number,
+    numPoints: number = 20
+  ): Promise<{ x: number; y: number }[]> { // BUG-011: Retorno ajustado para {x, y}
+    const points: { x: number; y: number }[] = [];
+    const minReturn = 0.04;
+    const maxReturn = 0.30;
+    
+    for (let i = 0; i < numPoints; i++) {
+      const target = minReturn + (maxReturn - minReturn) * (i / (numPoints - 1));
+      // BUG-012: Adicionado try-catch para robustez
+      try {
+        const scenarios = await this.optimize(assets, riskFreeRate, target);
+        // Encontra o cenário de mínima volatilidade para o retorno alvo
+        const targetScenario = scenarios.find(s => s.name.startsWith('Target Return'));
+        if (targetScenario) {
+          points.push({
+            x: targetScenario.performance.volatility, // Volatilidade no eixo X
+            y: targetScenario.performance.expectedReturn // Retorno no eixo Y
+          });
         }
-    }
-
-    const { prices: priceMatrix } = createPriceMatrix(monthlyQuotes);
-
-    const orderedReturns: number[][] = [];
-    const validAssets: AssetData[] = [];
-    assets.forEach(asset => {
-        const prices = priceMatrix[asset.ticker];
-        if (prices && prices.length > 0) {
-            orderedReturns.push(this.calculateReturns(prices));
-            validAssets.push(asset);
-        }
-    });
-
-    if (validAssets.length < 2) {
-        return [];
-    }
-
-    const stats = orderedReturns.map(r => this.calculateStats(r));
-    const expectedReturns = stats.map(s => s.mean);
-    const covMatrix = this.calculateCovariance(orderedReturns);
-
-    const numPortfolios = 5000;
-    const frontierPoints: { x: number, y: number }[] = [];
-
-    for (let i = 0; i < numPortfolios; i++) {
-      let weights = validAssets.map(() => Math.random());
-      const sum = weights.reduce((a, b) => a + b, 0);
-      weights = weights.map(w => w / sum);
-
-      const portReturn = weights.reduce((acc, w, idx) => acc + w * expectedReturns[idx], 0);
-
-      let variance = 0;
-      for (let j = 0; j < validAssets.length; j++) {
-        for (let k = 0; k < validAssets.length; k++) {
-          variance += weights[j] * weights[k] * covMatrix[j][k];
-        }
-      }
-      const portVol = Math.sqrt(variance);
-
-      if (isFinite(portReturn) && isFinite(portVol)) {
-          frontierPoints.push({ y: portReturn, x: portVol });
+      } catch(e) { 
+        console.warn(`Não foi possível calcular o ponto da fronteira para o retorno alvo de ${(target*100).toFixed(1)}%. Erro: ${(e as Error).message}`);
+        // Pula para o próximo ponto em caso de erro
       }
     }
-
-    return frontierPoints;
+    return points;
   }
 
   public async optimize(assets: AssetData[], riskFreeRate: number, targetReturn: number = 0.15): Promise<PortfolioScenario[]> {
@@ -155,7 +124,7 @@ export class PortfolioOptimizer {
         }
     }
 
-    // 3. Criar Matriz de Preços e Calcular Retornos (CORRIGIDO para B-03)
+    // 3. Criar Matriz de Preços e Calcular Retornos
     const { prices: priceMatrix } = createPriceMatrix(monthlyQuotes);
     const orderedReturns: number[][] = [];
     assets.forEach(asset => {
@@ -166,7 +135,6 @@ export class PortfolioOptimizer {
         orderedReturns.push(this.calculateReturns(prices));
     });
 
-    // Validação Pós-Cálculo de Retornos
     if(orderedReturns.some(r => r.length === 0)) {
         throw new Error("Erro inesperado: A lista de retornos de um ativo está vazia mesmo após validação inicial.");
     }
@@ -203,9 +171,10 @@ export class PortfolioOptimizer {
         }
       }
       const portVol = Math.sqrt(variance);
-      const sharpe = (portReturn - (riskFreeRate / 100)) / portVol;
+      
+      // BUG-010 CORRIGIDO: Remove a divisão por 100, pois a taxa já é um decimal
+      const sharpe = (portReturn - riskFreeRate) / portVol;
 
-      // Validação de Robustez dentro do Loop
       if (!isFinite(portReturn) || !isFinite(portVol) || !isFinite(sharpe)) {
           console.warn(`Simulação ${i} resultou em valores inválidos (ret: ${portReturn}, vol: ${portVol}). Pesos: ${weights}. Pulando.`);
           continue;
@@ -223,7 +192,8 @@ export class PortfolioOptimizer {
         minVolStats = { ret: portReturn, vol: portVol, sharpe };
       }
 
-      if (portReturn >= targetReturn && portVol < targetReturnStats.vol) {
+      // Lógica para encontrar o portfólio mais próximo do retorno alvo com a menor volatilidade
+      if (Math.abs(portReturn - targetReturn) < 0.01 && portVol < targetReturnStats.vol) {
           targetReturnStats = { ret: portReturn, vol: portVol, sharpe };
           targetReturnWeights = weights;
       }

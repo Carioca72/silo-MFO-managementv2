@@ -11,12 +11,25 @@ router.post('/chat', async (req: Request, res: Response) => {
     }
 
     try {
-        const aiResponse = await siloAdvisor.generateResponse(message, null, history || []);
-        res.setHeader('Content-Type', 'text/plain');
-        res.send(aiResponse);
+        // Configura os headers para uma resposta de streaming
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        res.setHeader('Transfer-Encoding', 'chunked');
+
+        const stream = siloAdvisor.generateResponse(message, null, history || []);
+
+        for await (const chunk of stream) {
+            res.write(chunk);
+        }
+
+        res.end(); // Finaliza a resposta de streaming
+
     } catch (error) {
         console.error('Error in /chat endpoint:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        // Se um erro ocorrer, tenta enviar uma resposta de erro JSON.
+        // Isso pode falhar se o streaming já começou, mas é a melhor tentativa.
+        if (!res.headersSent) {
+            res.status(500).json({ error: 'Internal server error' });
+        }
     }
 });
 
