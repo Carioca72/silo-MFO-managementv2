@@ -1,19 +1,15 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 
-// Interfaces para tipar os dados que virão da API
-// Espelham as interfaces do backend
-interface AnalysisResult {
-  original_filename: string;
-  // Adicionar outros campos se necessário para a UI
-}
-
+// Interfaces
+interface AnalysisResult { original_filename: string; }
 interface Study {
   id: string;
   name: string;
   clientName: string;
   type: 'Estudo de Carteira' | 'Relatório de Resultados';
   status: 'Concluído' | 'Em Andamento' | 'Erro';
-  createdAt: string; // A data virá como string no JSON
+  createdAt: string;
   analysisResult: AnalysisResult;
 }
 
@@ -21,18 +17,14 @@ const StudiesHistoryPage: React.FC = () => {
   const [studies, setStudies] = useState<Study[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
-    // Função para buscar os dados da API
     const fetchStudies = async () => {
       try {
         setLoading(true);
-        // O fetch é feito para a nossa API backend (que roda na porta 3000)
-        // O NestJS controller expõe a rota /api/studies
         const response = await fetch('/api/studies');
-        if (!response.ok) {
-          throw new Error('Falha ao buscar os dados dos estudos.');
-        }
+        if (!response.ok) throw new Error('Falha ao buscar os dados.');
         const data: Study[] = await response.json();
         setStudies(data);
       } catch (err) {
@@ -41,37 +33,56 @@ const StudiesHistoryPage: React.FC = () => {
         setLoading(false);
       }
     };
-
     fetchStudies();
-  }, []); // O array vazio assegura que o efeito rode apenas uma vez, no mount do componente
+  }, []);
 
-  // Handlers para os botões de ação (por enquanto, apenas logs)
-  const handleDetails = (id: string) => {
-    console.log(`Navegar para os detalhes do estudo: ${id}`);
-    // Futuramente: navigate(`/studies/${id}`);
-  };
+  const handleDetails = (id: string) => navigate(`/study/${id}`);
 
-  const handleRename = (id: string) => {
-    const newName = prompt('Digite o novo nome para o estudo:');
-    if (newName) {
-      console.log(`Renomeando estudo ${id} para ${newName}`);
-      // Futuramente: fazer a chamada PATCH para /api/studies/${id}/rename
+  const handleRename = async (id: string) => {
+    const study = studies.find(s => s.id === id);
+    const newName = prompt('Digite o novo nome para o estudo:', study?.name || '');
+    if (newName && newName !== study?.name) {
+      try {
+        const response = await fetch(`/api/studies/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: newName }),
+        });
+        if (!response.ok) throw new Error('Falha ao renomear o estudo.');
+        const updatedStudy = await response.json();
+        setStudies(prev => prev.map(s => (s.id === id ? updatedStudy : s)));
+      } catch (err) { alert((err as Error).message); }
     }
   };
 
-  const handleReanalyze = (id: string) => {
-    console.log(`Disparando reanálise para o estudo: ${id}`);
-    // Futuramente: fazer a chamada POST para /api/studies/${id}/reanalyze
+  const handleReanalyze = async (id: string) => {
+    // Impede múltiplas reanálises simultâneas
+    const study = studies.find(s => s.id === id);
+    if (study?.status === 'Em Andamento') return;
+
+    // 1. Feedback imediato na UI
+    setStudies(prev => prev.map(s => s.id === id ? { ...s, status: 'Em Andamento' } : s));
+
+    try {
+      // 2. Chama a API
+      const response = await fetch(`/api/studies/${id}/reanalyze`, { method: 'POST' });
+      if (response.status !== 202) throw new Error('Falha ao iniciar a reanálise.');
+
+      // 3. Simula a espera (o backend está fazendo o mesmo)
+      setTimeout(() => {
+        // 4. Atualiza para "Concluído" após o tempo
+        setStudies(prev => prev.map(s => s.id === id ? { ...s, status: 'Concluído' } : s));
+      }, 4000);
+
+    } catch (err) {
+      alert((err as Error).message);
+      // Reverte em caso de erro
+      setStudies(prev => prev.map(s => s.id === id ? { ...s, status: study?.status || 'Erro' } : s));
+    }
   };
 
-
-  if (loading) {
-    return <div>Carregando histórico...</div>;
-  }
-
-  if (error) {
-    return <div>Erro: {error}</div>;
-  }
+  if (loading) return <div>Carregando histórico...</div>;
+  if (error) return <div>Erro: {error}</div>;
 
   return (
     <div style={{ padding: '20px', fontFamily: 'sans-serif' }}>
@@ -88,28 +99,32 @@ const StudiesHistoryPage: React.FC = () => {
           </tr>
         </thead>
         <tbody>
-          {studies.length > 0 ? (
-            studies.map((study) => (
-              <tr key={study.id} style={{ borderBottom: '1px solid #ccc' }}>
-                <td style={{ padding: '8px' }}>{study.name}</td>
-                <td style={{ padding: '8px' }}>{study.clientName}</td>
-                <td style={{ padding: '8px' }}>{study.type}</td>
-                <td style={{ padding: '8px' }}>{new Date(study.createdAt).toLocaleDateString('pt-BR')}</td>
-                <td style={{ padding: '8px' }}>{study.status}</td>
-                <td style={{ padding: '8px' }}>
-                  <button onClick={() => handleDetails(study.id)} style={{ marginRight: '5px' }}>Detalhes</button>
-                  <button onClick={() => handleRename(study.id)} style={{ marginRight: '5px' }}>Renomear</button>
-                  <button onClick={() => handleReanalyze(study.id)}>Reanalisar</button>
-                </td>
-              </tr>
-            ))
-          ) : (
-            <tr>
-              <td colSpan={6} style={{ textAlign: 'center', padding: '20px' }}>
-                Nenhum estudo encontrado. Faça um novo upload para começar.
+          {studies.map((study) => (
+            <tr key={study.id} style={{ borderBottom: '1px solid #ccc' }}>
+              <td style={{ padding: '8px' }}>{study.name}</td>
+              <td style={{ padding: '8px' }}>{study.clientName}</td>
+              <td style={{ padding: '8px' }}>{study.type}</td>
+              <td style={{ padding: '8px' }}>{new Date(study.createdAt).toLocaleDateString('pt-BR')}</td>
+              <td style={{ padding: '8px' }}>
+                <span style={{
+                  padding: '4px 8px',
+                  borderRadius: '12px',
+                  fontSize: '12px',
+                  color: 'white',
+                  backgroundColor: study.status === 'Concluído' ? '#28a745' : study.status === 'Em Andamento' ? '#ffc107' : '#dc3545'
+                }}>
+                  {study.status}
+                </span>
+              </td>
+              <td style={{ padding: '8px' }}>
+                <button onClick={() => handleDetails(study.id)} style={{ marginRight: '5px' }}>Detalhes</button>
+                <button onClick={() => handleRename(study.id)} style={{ marginRight: '5px' }}>Renomear</button>
+                <button onClick={() => handleReanalyze(study.id)} disabled={study.status === 'Em Andamento'}>
+                  {study.status === 'Em Andamento' ? 'Analisando...' : 'Reanalisar'}
+                </button>
               </td>
             </tr>
-          )}
+          ))}
         </tbody>
       </table>
     </div>

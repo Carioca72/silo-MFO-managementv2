@@ -1,98 +1,76 @@
 import React from 'react';
-import { Pie } from 'react-chartjs-2';
-import {
-  Chart as ChartJS,
-  ArcElement,
-  Tooltip,
-  Legend,
-  Title,
-} from 'chart.js';
+import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
-ChartJS.register(ArcElement, Tooltip, Legend, Title);
-
-// Tipagem para os ativos individuais na carteira
-interface Asset {
-  classe_ativo: string;
-  valor_total: number;
+// Interface para os dados do portfólio, garantindo a tipagem
+interface PortfolioData {
+  name: string;
+  value: number;
+  category: string;
 }
 
+// Interface para as props do componente
 interface AllocationChartProps {
-  portfolio: Asset[];
+  portfolio: PortfolioData[];
 }
+
+// Cores consistentes para as categorias
+const COLORS: { [key: string]: string } = {
+  'RF': '#0088FE',
+  'FII': '#00C49F',
+  'RV': '#FFBB28',
+  'RV Int': '#FF8042',
+  'Caixa': '#A9A9A9',
+  'RF Int': '#8884d8',
+};
 
 const AllocationChart: React.FC<AllocationChartProps> = ({ portfolio }) => {
-  // 1. Agrupar e somar os valores por classe de ativo
-  const allocation = portfolio.reduce((acc, asset) => {
-    const { classe_ativo, valor_total } = asset;
-    if (!acc[classe_ativo]) {
-      acc[classe_ativo] = 0;
-    }
-    acc[classe_ativo] += valor_total;
-    return acc;
-  }, {} as { [key: string]: number });
+  // O componente agora é "puro". Ele recebe os dados e os renderiza.
+  // Não há mais dados mockados ou hardcoded aqui dentro.
 
-  const labels = Object.keys(allocation);
-  const dataValues = Object.values(allocation);
+  if (!portfolio || portfolio.length === 0) {
+    return <div>Dados de alocação não disponíveis.</div>;
+  }
 
-  const data = {
-    labels,
-    datasets: [
-      {
-        label: 'Valor (R$)',
-        data: dataValues,
-        backgroundColor: [
-          'rgba(255, 99, 132, 0.7)',
-          'rgba(54, 162, 235, 0.7)',
-          'rgba(255, 206, 86, 0.7)',
-          'rgba(75, 192, 192, 0.7)',
-          'rgba(153, 102, 255, 0.7)',
-          'rgba(255, 159, 64, 0.7)',
-        ],
-        borderColor: [
-          'rgba(255, 99, 132, 1)',
-          'rgba(54, 162, 235, 1)',
-          'rgba(255, 206, 86, 1)',
-          'rgba(75, 192, 192, 1)',
-          'rgba(153, 102, 255, 1)',
-          'rgba(255, 159, 64, 1)',
-        ],
-        borderWidth: 1,
-      },
-    ],
-  };
+  const chartData = portfolio.map(item => ({
+    name: item.name,
+    value: item.value,
+  }));
 
-  const options = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        position: 'top' as const,
-      },
-      title: {
-        display: true,
-        text: 'Alocação por Classe de Ativo',
-      },
-      tooltip: {
-        callbacks: {
-            label: function(context) {
-                let label = context.label || '';
-                if (label) {
-                    label += ': ';
-                }
-                if (context.raw !== null) {
-                    const total = context.chart.getDatasetMeta(0).total;
-                    const value = context.raw as number;
-                    const percentage = ((value / total) * 100).toFixed(2);
-                    label += `${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)} (${percentage}%)`;
-                }
-                return label;
-            }
-        }
-      }
-    },
-  };
-
-  return <div style={{ height: '400px' }}><Pie data={data} options={options} /></div>;
+  return (
+    <div style={{ width: '100%', height: 300 }}>
+      <h3 style={{ textAlign: 'center' }}>Alocação da Carteira Atual</h3>
+      <ResponsiveContainer>
+        <PieChart>
+          <Pie
+            data={chartData}
+            cx="50%"
+            cy="50%"
+            labelLine={false}
+            outerRadius={80}
+            fill="#8884d8"
+            dataKey="value"
+            nameKey="name"
+            label={({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
+              const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+              const x = cx + radius * Math.cos(-midAngle * (Math.PI / 180));
+              const y = cy + radius * Math.sin(-midAngle * (Math.PI / 180));
+              return (
+                <text x={x} y={y} fill="white" textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central">
+                  {`${(percent * 100).toFixed(0)}%`}
+                </text>
+              );
+            }}
+          >
+            {portfolio.map((entry, index) => (
+              <Cell key={`cell-${index}`} fill={COLORS[entry.category] || '#82ca9d'} />
+            ))}
+          </Pie>
+          <Tooltip formatter={(value: number) => `R$ ${value.toLocaleString('pt-BR')}`} />
+          <Legend />
+        </PieChart>
+      </ResponsiveContainer>
+    </div>
+  );
 };
 
 export default AllocationChart;

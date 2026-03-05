@@ -1,281 +1,213 @@
-import { useState } from 'react';
-import { Search, ChevronRight, X, Check, CheckSquare, Square,
- FileText, User, Sparkles, BarChart2, Send, Download, Eye, Bot } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Search, ChevronRight, X, Check, CheckSquare, Square, FileText, User, Sparkles, BarChart2, Send, Download, Eye, Bot } from 'lucide-react';
 
+// Type definitions
+type Client = { id: string; nome: string; cnpj: string; portfolio: string; email: string; telefone: string; aum: string; perfil: string; };
+type Tool = { id: string; name: string; cat: string; icon: string; desc: string; };
 type Step = 'tools' | 'client' | 'preview';
 
-const TOOLS = [
- { id:'ext022', name:'ExtratoCarteira022', cat:'Extrato', icon:'■',
- desc:'Extrato MFO completo: posição, liquidez, movimentação, gráficos' },
- { id:'ext023', name:'ExtratoCarteira023', cat:'Extrato', icon:'■',
- desc:'Extrato consolidado com evolução vs benchmarks CDI/IBOV' },
- { id:'ext024', name:'ExtratoCarteira024', cat:'Extrato', icon:'■',
- desc:'Extrato executivo com alocação por tipo e gestor' },
- { id:'pos001', name:'PosicaoConsolidada001', cat:'Posição', icon:'■',
- desc:'Posição consolidada com aportes, resgates e IR/IOF' },
- { id:'var001', name:'Value_at_Risk001', cat:'Risco', icon:'■■',
- desc:'VaR 95% histórico para portfólio multi-ativo' },
- { id:'mkw001', name:'Markowitz001', cat:'Otimização', icon:'■',
- desc:'Fronteira eficiente e portfólio ótimo de Markowitz' },
- { id:'rco001', name:'Risco001', cat:'Risco', icon:'■',
- desc:'Matriz de correlação, covariância e risco×retorno' },
- { id:'drw001', name:'DrawDownAcumulado001', cat:'Risco', icon:'■',
- desc:'Série histórica de drawdown acumulado pico a vale' },
- { id:'str001', name:'StressTest001', cat:'Risco', icon:'■',
- desc:'Stress test com cenários de choque de mercado' },
- { id:'est001', name:'AnaliseEstilo001', cat:'Atribuição', icon:'■',
- desc:'Style analysis do fundo vs IBOV/CDI/IMA-B' },
- { id:'dur001', name:'Duration001', cat:'Renda Fixa', icon:'■',
- desc:'Duration Macaulay, Modificada e DV01 por vértice' },
- { id:'rlq001', name:'RiscoLiquidez001', cat:'Liquidez', icon:'■',
- desc:'Prazo médio de liquidação e risco de liquidez' },
- { id:'ger002', name:'RelatorioGerencial002', cat:'Gerencial', icon:'■',
- desc:'Relatório gerencial mensal com eventos' },
- { id:'lam021', name:'LaminaFundo021', cat:'Fundos', icon:'■',
- desc:'Lâmina completa do fundo com retornos e benchmarks' },
-];
-
-const CATS = ['Todos','Extrato','Posição','Risco','Otimização',
- 'Atribuição','Renda Fixa','Liquidez','Gerencial','Fundos'];
-
-const CLIENTS = [
- { id:'1', nome:'Família Andrade', cnpj:'12.345.678/0001-90',
- portfolio:'andrade_main', email:'gestao@andrade.com.br',
- telefone:'+55 81 99999-0001', aum:'R$ 12,4M', perfil:'Moderado' },
- { id:'2', nome:'Instituto Brennand', cnpj:'23.456.789/0001-12',
- portfolio:'brennand_fundo', email:'financeiro@brennand.org',
- telefone:'+55 81 99999-0002', aum:'R$ 8,7M', perfil:'Conservador' },
- { id:'3', nome:'Holding Cerqueira', cnpj:'34.567.890/0001-23',
- portfolio:'cerqueira_holding', email:'diretoria@cerqueira.com',
- telefone:'+55 81 99999-0003', aum:'R$ 21,3M', perfil:'Arrojado' },
- { id:'4', nome:'Família Magalhães', cnpj:'56.789.012/0001-45',
- portfolio:'magalhaes_fam', email:'patrimonial@magalhaes.com',
- telefone:'+55 81 99999-0005', aum:'R$ 15,8M', perfil:'Moderado' },
-];
+const CATS = ['Todos','Extrato','Posição','Risco','Otimização', 'Atribuição','Renda Fixa','Liquidez','Gerencial','Fundos'];
 
 export default function ReportGenerator() {
- const [step, setStep] = useState<Step>('tools');
- const [selectedTools, setSelectedTools] = useState<string[]>(
- ['ext022','pos001','var001']);
- const [catFilter, setCatFilter] = useState('Todos');
- const [search, setSearch] = useState('');
- const [selectedClient, setSelectedClient] =
- useState<typeof CLIENTS[0]|null>(null);
- const [clientSearch, setClientSearch] = useState('');
- const [reportName, setReportName] = useState('');
- const [generating, setGenerating] = useState(false);
- const [generated, setGenerated] = useState(false);
- const [sendModal, setSendModal] = useState(false);
- const [advisorMsg, setAdvisorMsg] = useState('');
- const [advisorResp, setAdvisorResp] = useState<string|null>(null);
+  const [step, setStep] = useState<Step>('tools');
+  
+  // State for data fetched from API
+  const [tools, setTools] = useState<Tool[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
 
- const toggle = (id: string) => setSelectedTools(p =>
- p.includes(id) ? p.filter(x=>x!==id) : [...p, id]);
+  // State for user selections
+  const [selectedTools, setSelectedTools] = useState<string[]>(['ext022', 'mkw001']);
+  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
 
- const filtered = TOOLS.filter(t => {
- const mc = catFilter==='Todos' || t.cat===catFilter;
- const ms = t.name.toLowerCase().includes(search.toLowerCase()) ||
- t.desc.toLowerCase().includes(search.toLowerCase());
- return mc && ms;
- });
+  // State for UI controls
+  const [catFilter, setCatFilter] = useState('Todos');
+  const [search, setSearch] = useState('');
+  const [clientSearch, setClientSearch] = useState('');
+  const [reportName, setReportName] = useState('');
+  const [generating, setGenerating] = useState(false);
+  const [generated, setGenerated] = useState(false);
+  const [sendModal, setSendModal] = useState(false);
+  const [advisorMsg, setAdvisorMsg] = useState('');
+  const [advisorResp, setAdvisorResp] = useState<string | null>(null);
 
- const filteredClients = CLIENTS.filter(c =>
- c.nome.toLowerCase().includes(clientSearch.toLowerCase()) ||
- c.cnpj.includes(clientSearch));
+  // Fetch tools and clients from the API
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [toolsResponse, clientsResponse] = await Promise.all([
+          fetch('/api/tools'),
+          fetch('/api/clients')
+        ]);
+        if (!toolsResponse.ok || !clientsResponse.ok) {
+          throw new Error('Failed to fetch data');
+        }
+        const toolsData: Tool[] = await toolsResponse.json();
+        const clientsData: Client[] = await clientsResponse.json();
+        setTools(toolsData);
+        setClients(clientsData);
+      } catch (error) {
+        console.error(error);
+      }
+    };
+    fetchData();
+  }, []);
 
- const handleGenerate = async () => {
- if (!selectedClient) return;
- setGenerating(true);
- try {
- await fetch('/api/reports/generate', {
- method:'POST', headers:{'Content-Type':'application/json'},
- body: JSON.stringify({
- clientId: selectedClient.id,
- tools: selectedTools,
- reportName: reportName || `Relatório ${selectedClient.nome}`,
- })
- });
- } catch(e) { console.error(e); }
- await new Promise(r => setTimeout(r, 2500));
- setGenerating(false); setGenerated(true); setStep('preview');
- };
+  const toggleTool = (id: string) => setSelectedTools(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
 
- const handleAdvisor = async () => {
- if (!advisorMsg) return;
- await new Promise(r => setTimeout(r, 1200));
- setAdvisorResp('Recomendo: ExtratoCarteira022 (posição completa), ' +
- 'Value_at_Risk001 (VaR 95%) e Markowitz001 (fronteira eficiente). ' +
- 'Combinação ideal para relatório mensal perfil moderado.');
- setAdvisorMsg('');
- };
+  // Filtered data based on user input
+  const filteredTools = tools.filter(t => {
+    const mc = catFilter === 'Todos' || t.cat === catFilter;
+    const ms = t.name.toLowerCase().includes(search.toLowerCase()) || t.desc.toLowerCase().includes(search.toLowerCase());
+    return mc && ms;
+  });
 
- const STEPS = [
- { key:'tools', label:'1. Ferramentas' },
- { key:'client', label:'2. Cliente' },
- { key:'preview', label:'3. Preview & Envio' },
- ];
+  const filteredClients = clients.filter(c =>
+    c.nome.toLowerCase().includes(clientSearch.toLowerCase()) || c.cnpj.includes(clientSearch)
+  );
 
- return (
- <div className="space-y-4">
- {/* Stepper */}
- <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
- <div className="flex items-center gap-2">
- {STEPS.map((s, i) => (
- <div key={s.key} className="flex items-center gap-2 flex-1">
- <button
- onClick={() => (s.key!=='preview'||generated) &&
- setStep(s.key as Step)}
- className={`flex items-center gap-2 px-3 py-2 rounded-lg
- text-sm font-medium transition-all ${
- step===s.key
- ? 'bg-[#C9A84C] text-[#0F0F1A]'
- : 'text-gray-700 hover:bg-gray-100'}`}
- >
- <span className={`w-5 h-5 rounded-full text-xs flex items-center
- justify-center font-bold flex-shrink-0 ${
- step===s.key
- ? 'bg-[#0F0F1A] text-[#C9A84C]'
- : 'bg-gray-200 text-gray-500'}`}>
- {i+1}
- </span>
- {s.label}
- </button>
- {i<2 && <ChevronRight size={16} className="text-gray-300
- flex-shrink-0"/>}
- </div>
- ))}
- </div>
- </div>
+  const handleGenerate = async () => {
+    if (!selectedClient) return;
+    setGenerating(true);
+    try {
+      const response = await fetch('/api/reports/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientId: selectedClient.id,
+          tools: selectedTools,
+          reportName: reportName || `Relatório ${selectedClient.nome}`,
+        }),
+      });
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      const result = await response.json();
+      console.log('Report generation started:', result);
+      setGenerated(true);
+      setStep('preview');
+    } catch (e) {
+      console.error('Failed to generate report:', e);
+    } finally {
+      setGenerating(false);
+    }
+  };
+  
+  const handleAdvisor = async () => {
+    if (!advisorMsg) return;
+    await new Promise(r => setTimeout(r, 1200));
+    setAdvisorResp('Recomendo: ExtratoCarteira022 (posição completa), ' +
+    'Value_at_Risk001 (VaR 95%) e Markowitz001 (fronteira eficiente). ' +
+    'Combinação ideal para relatório mensal perfil moderado.');
+    setAdvisorMsg('');
+  };
 
- {/* STEP 1 — FERRAMENTAS */}
- {step==='tools' && (
- <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
- <div className="lg:col-span-3 bg-white rounded-xl border
- border-gray-200 shadow-sm overflow-hidden">
- <div className="p-4 border-b border-gray-100">
- <div className="flex gap-2 mb-3">
- <div className="relative flex-1">
- <Search size={15} className="absolute left-3 top-1/2
- -translate-y-1/2 text-gray-400"/>
- <input value={search} onChange={e=>setSearch(e.target.value)}
- placeholder="Buscar endpoint..."
- className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200
- rounded-lg focus:ring-1 focus:ring-[#C9A84C] outline-none"/>
- </div>
- <span className="text-xs text-gray-400 self-center">
- {selectedTools.length} selecionadas
- </span>
- </div>
- <div className="flex gap-1 flex-wrap">
- {CATS.map(c => (
- <button key={c} onClick={()=>setCatFilter(c)}
- className={`px-2.5 py-1 text-xs rounded-full font-medium
- transition-all ${catFilter===c
- ? 'bg-[#1A1A2E] text-white'
- : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
- {c}
- </button>
- ))}
- </div>
- </div>
- <div className="overflow-y-auto" style={{maxHeight:'440px'}}>
- <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-4">
- {filtered.map(tool => {
- const sel = selectedTools.includes(tool.id);
- return (
- <div key={tool.id} onClick={()=>toggle(tool.id)}
- className={`flex items-start gap-3 p-3 rounded-xl border
- cursor-pointer transition-all ${sel
- ? 'border-[#C9A84C] bg-[#C9A84C]/5 shadow-sm'
- : 'border-gray-200 hover:border-gray-300 bg-gray-50'}`}>
- <span className="text-lg flex-shrink-0">{tool.icon}</span>
- <div className="flex-1 min-w-0">
- <div className="flex items-center gap-1 mb-0.5">
- <p className="text-xs font-bold text-[#0F0F1A]
- truncate">{tool.name}</p>
- <span className="text-[9px] bg-gray-200 text-gray-600
- px-1.5 py-0.5 rounded-full flex-shrink-0">
- {tool.cat}
- </span>
- </div>
- <p className="text-[11px] text-gray-500 leading-relaxed">
- {tool.desc}
- </p>
- </div>
- {sel
- ? <CheckSquare size={16} className="text-[#C9A84C]
- flex-shrink-0"/>
- : <Square size={16} className="text-gray-300
- flex-shrink-0"/>}
- </div>
- );
- })}
- </div>
- </div>
- </div>
- <div className="space-y-4">
- <div className="bg-white rounded-xl border border-gray-200
- p-4 shadow-sm">
- <h3 className="text-sm font-semibold text-[#0F0F1A] mb-3
- flex items-center gap-2">
- <Bot size={15} className="text-[#C9A84C]"/> SILO Advisor
- </h3>
- <textarea value={advisorMsg}
- onChange={e=>setAdvisorMsg(e.target.value)}
- placeholder="Pergunte qual ferramenta usar..."
- className="w-full text-xs border border-gray-200 rounded-lg p-2
- resize-none focus:ring-1 focus:ring-[#C9A84C] outline-none"
- rows={3}/>
- <button onClick={handleAdvisor}
- className="mt-2 w-full bg-[#1A1A2E] text-white text-xs py-2
- rounded-lg hover:bg-[#2d2d4a] transition-colors
- flex items-center justify-center gap-1">
- <Sparkles size={13}/> Recomendar
- </button>
- {advisorResp && (
- <div className="mt-3 p-2.5 bg-[#F4F1EB] rounded-lg text-xs
- text-gray-700 border border-[#C9A84C]/20 leading-relaxed">
- {advisorResp}
- </div>
- )}
- </div>
- <div className="bg-white rounded-xl border border-gray-200
- p-4 shadow-sm">
- <h3 className="text-sm font-semibold text-[#0F0F1A] mb-3">
- Selecionadas ({selectedTools.length})
- </h3>
- <div className="space-y-1.5 max-h-44 overflow-y-auto">
- {selectedTools.length===0
- ? <p className="text-xs text-gray-400">Nenhuma</p>
- : selectedTools.map(id => {
- const t = TOOLS.find(x=>x.id===id);
- return t ? (
- <div key={id} className="flex items-center justify-between
- bg-[#C9A84C]/8 rounded-lg px-2.5 py-1.5">
- <span className="text-xs font-medium text-[#0F0F1A]
- truncate">{t.icon} {t.name}</span>
- <button onClick={()=>toggle(id)}>
- <X size={12} className="text-gray-400"/>
- </button>
- </div>
- ) : null;
- })
- }
- </div>
- {selectedTools.length > 0 && (
- <button onClick={()=>setStep('client')}
- className="mt-3 w-full bg-[#C9A84C] text-[#0F0F1A] text-sm
- font-semibold py-2 rounded-lg hover:bg-[#b8942e]">
- Próximo: Cliente →
- </button>
- )}
- </div>
- </div>
- </div>
- )}
 
- {/* STEP 2 — CLIENTE */}
- {step==='client' && (
+  const STEPS = [
+    { key:'tools' as Step, label:'1. Ferramentas' },
+    { key:'client' as Step, label:'2. Cliente' },
+    { key:'preview' as Step, label:'3. Preview & Envio' },
+  ];
+
+
+  // JSX rendering remains largely the same, but it's now powered by state fed from the API.
+  return (
+    <div className="space-y-4">
+      {/* Stepper */}
+      <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+        <div className="flex items-center gap-2">
+          {STEPS.map((s, i) => (
+            <div key={s.key} className="flex items-center gap-2 flex-1">
+              <button
+                onClick={() => (s.key !== 'preview' || generated) && setStep(s.key)}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                  step === s.key
+                    ? 'bg-[#C9A84C] text-[#0F0F1A]'
+                    : 'text-gray-700 hover:bg-gray-100'}`}>
+                <span className={`w-5 h-5 rounded-full text-xs flex items-center justify-center font-bold flex-shrink-0 ${
+                    step === s.key
+                      ? 'bg-[#0F0F1A] text-[#C9A84C]'
+                      : 'bg-gray-200 text-gray-500'}`}>
+                  {i + 1}
+                </span>
+                {s.label}
+              </button>
+              {i < 2 && <ChevronRight size={16} className="text-gray-300 flex-shrink-0" />}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* STEP 1 — FERRAMENTAS */}
+      {step === 'tools' && (
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+          <div className="lg:col-span-3 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+             <div className="p-4 border-b border-gray-100">
+                <div className="flex gap-2 mb-3">
+                <div className="relative flex-1">
+                    <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
+                    <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar endpoint..."
+                    className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-1 focus:ring-[#C9A84C] outline-none"/>
+                </div>
+                <span className="text-xs text-gray-400 self-center">{selectedTools.length} selecionadas</span>
+                </div>
+                <div className="flex gap-1 flex-wrap">
+                {CATS.map(c => (
+                    <button key={c} onClick={()=>setCatFilter(c)}
+                    className={`px-2.5 py-1 text-xs rounded-full font-medium transition-all ${catFilter===c ? 'bg-[#1A1A2E] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                    {c}
+                    </button>
+                ))}
+                </div>
+            </div>
+            <div className="overflow-y-auto" style={{maxHeight:'440px'}}>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-4">
+                {filteredTools.map(tool => {
+                    const sel = selectedTools.includes(tool.id);
+                    return (
+                    <div key={tool.id} onClick={()=>toggleTool(tool.id)}
+                        className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${sel ? 'border-[#C9A84C] bg-[#C9A84C]/5 shadow-sm' : 'border-gray-200 hover:border-gray-300 bg-gray-50'}`}>
+                        <span className="text-lg flex-shrink-0">{tool.icon}</span>
+                        <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1 mb-0.5">
+                            <p className="text-xs font-bold text-[#0F0F1A] truncate">{tool.name}</p>
+                            <span className="text-[9px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded-full flex-shrink-0">{tool.cat}</span>
+                        </div>
+                        <p className="text-[11px] text-gray-500 leading-relaxed">{tool.desc}</p>
+                        </div>
+                        {sel ? <CheckSquare size={16} className="text-[#C9A84C] flex-shrink-0"/> : <Square size={16} className="text-gray-300 flex-shrink-0"/>}
+                    </div>
+                    );
+                })}
+                </div>
+            </div>
+        </div>
+        <div className="space-y-4">
+             <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+                <h3 className="text-sm font-semibold text-[#0F0F1A] mb-3 flex items-center gap-2"><Bot size={15} className="text-[#C9A84C]"/> SILO Advisor</h3>
+                <textarea value={advisorMsg} onChange={e=>setAdvisorMsg(e.target.value)} placeholder="Pergunte qual ferramenta usar..."
+                className="w-full text-xs border border-gray-200 rounded-lg p-2 resize-none focus:ring-1 focus:ring-[#C9A84C] outline-none" rows={3}/>
+                <button onClick={handleAdvisor} className="mt-2 w-full bg-[#1A1A2E] text-white text-xs py-2 rounded-lg hover:bg-[#2d2d4a] transition-colors flex items-center justify-center gap-1">
+                    <Sparkles size={13}/> Recomendar
+                </button>
+                {advisorResp && <div className="mt-3 p-2.5 bg-[#F4F1EB] rounded-lg text-xs text-gray-700 border border-[#C9A84C]/20 leading-relaxed">{advisorResp}</div>}
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+                <h3 className="text-sm font-semibold text-[#0F0F1A] mb-3">Selecionadas ({selectedTools.length})</h3>
+                <div className="space-y-1.5 max-h-44 overflow-y-auto">
+                {selectedTools.length===0 ? <p className="text-xs text-gray-400">Nenhuma</p> : selectedTools.map(id => {
+                    const t = tools.find(x=>x.id===id);
+                    return t ? <div key={id} className="flex items-center justify-between bg-[#C9A84C]/8 rounded-lg px-2.5 py-1.5">
+                        <span className="text-xs font-medium text-[#0F0F1A] truncate">{t.icon} {t.name}</span>
+                        <button onClick={()=>toggleTool(id)}><X size={12} className="text-gray-400"/></button>
+                    </div> : null;
+                })}
+                </div>
+                {selectedTools.length > 0 && <button onClick={()=>setStep('client')} className="mt-3 w-full bg-[#C9A84C] text-[#0F0F1A] text-sm font-semibold py-2 rounded-lg hover:bg-[#b8942e]">Próximo: Cliente →</button>}
+            </div>
+        </div>
+    </div>
+      )}
+
+      {/* STEP 2 & 3 etc. - No changes needed here as they already use the state-driven `filteredClients` and `selectedClient` */}
+       {step==='client' && (
  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
  <div className="bg-white rounded-xl border border-gray-200
  shadow-sm overflow-hidden">
@@ -526,6 +458,6 @@ export default function ReportGenerator() {
  </div>
  </div>
  )}
- </div>
- );
+    </div>
+  );
 }

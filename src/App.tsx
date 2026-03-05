@@ -1,48 +1,29 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { createBrowserRouter, RouterProvider } from "react-router-dom";
-import { Toaster } from "sonner";
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
+import ReportGenerator from './components/ReportGenerator';
+import StudiesHistoryPage from './components/StudiesHistoryPage';
+import StudyDetailPage from './components/StudyDetailPage';
+import ReportDetailPage from './components/ReportDetailPage'; // Importa a nova página
 
-import Layout from "./components/Layout";
-import AdvisorPage from "./components/advisor/AdvisorPage";
-import WhatsAppManager from "./components/whatsapp/WhatsAppManager";
-import StudyGenerator from "./components/reports/StudyGenerator";
-import { ThemeProvider } from "./components/theme-provider"; // Importando o ThemeProvider
-
-// Configuração do React Query Client
-const queryClient = new QueryClient();
-
-// Definição das rotas da aplicação
-const router = createBrowserRouter([
-  {
-    element: <Layout />,
-    children: [
-      {
-        path: "/",
-        element: <AdvisorPage />,
-      },
-      {
-        path: "/whatsapp",
-        element: <WhatsAppManager />,
-      },
-      {
-        // Rota de exemplo para o futuro
-        path: "/study",
-        element: <StudyGenerator />,
-      },
-      // Outras páginas podem ser adicionadas aqui
-    ],
-  },
-]);
-
-function App() {
+const App: React.FC = () => {
   return (
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
-        <Toaster position="top-right" richColors />
-        <RouterProvider router={router} />
-      </ThemeProvider>
-    </QueryClientProvider>
+    <Router>
+      <div>
+        <nav style={{ padding: '10px', background: '#f0f0f0', marginBottom: '20px' }}>
+          <Link to="/" style={{ marginRight: '15px' }}>Gerar Relatório</Link>
+          <Link to="/history">Histórico de Estudos</Link>
+        </nav>
+
+        <Routes>
+          <Route path="/" element={<ReportGenerator />} />
+          <Route path="/history" element={<StudiesHistoryPage />} />
+          <Route path="/study/:id" element={<StudyDetailPage />} />
+          {/* Adiciona a nova rota para a página de detalhes do relatório */}
+          <Route path="/report/:id" element={<ReportDetailPage />} /> 
+        </Routes>
+      </div>
+    </Router>
   );
-}
+};
 
 export default App;

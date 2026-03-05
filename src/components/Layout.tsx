@@ -1,5 +1,15 @@
 import { NavLink, Outlet } from "react-router-dom";
-import { BotMessageSquare, BarChart, Settings, LifeBuoy } from "lucide-react";
+import { 
+  BotMessageSquare, 
+  BarChart, 
+  Settings, 
+  LifeBuoy, 
+  Users, 
+  LayoutDashboard, 
+  Zap, 
+  FileText, 
+  BarChart3 
+} from "lucide-react";
 
 const Sidebar = () => (
   <aside className="w-64 flex-shrink-0 bg-background border-r border-border p-4 flex flex-col justify-between">
@@ -10,8 +20,12 @@ const Sidebar = () => (
       </div>
       <nav className="flex flex-col space-y-2">
         <SidebarLink to="/" icon={<BotMessageSquare size={20} />}>Advisor</SidebarLink>
+        <SidebarLink to="/dashboard" icon={<LayoutDashboard size={20} />}>Dashboards</SidebarLink>
+        <SidebarLink to="/crm" icon={<Users size={20} />}>CRM</SidebarLink>
+        <SidebarLink to="/automation" icon={<Zap size={20} />}>Automação</SidebarLink>
+        <SidebarLink to="/studies" icon={<FileText size={20} />}>Estudo de Carteira</SidebarLink>
+        <SidebarLink to="/reports" icon={<BarChart3 size={20} />}>Relatórios</SidebarLink>
         <SidebarLink to="/whatsapp" icon={<BarChart size={20} />}>WhatsApp</SidebarLink>
-        {/* Adicionar outros links aqui no futuro */}
       </nav>
     </div>
     <div className="flex flex-col space-y-2">
@@ -21,7 +35,7 @@ const Sidebar = () => (
   </aside>
 );
 
-const SidebarLink = ({ to, icon, children }) => {
+const SidebarLink = ({ to, icon, children }: { to: string, icon: React.ReactNode, children: React.ReactNode }) => {
   return (
     <NavLink
       to={to}

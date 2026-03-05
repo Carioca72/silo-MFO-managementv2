@@ -1,20 +1,13 @@
 import React, { useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom'; // Importa o hook useParams
 import CumulativeReturnChart from './charts/CumulativeReturnChart';
 import AllocationChart from './charts/AllocationChart';
 import StrategyExposureChart from './charts/StrategyExposureChart';
-import SharpeRatioGauge from './charts/SharpeRatioGauge'; // Importa o velocímetro
+import SharpeRatioGauge from './charts/SharpeRatioGauge';
 
-// Tipagem completa
-interface AggregatedIndicators {
-  volatilidade_anual: number;
-  retorno_anual: number;
-  sharpe: number;
-}
-interface Scenario {
-  portfolio: any[];
-  aggregated_indicators: AggregatedIndicators;
-  projections: any[];
-}
+// A tipagem do objeto Study permanece a mesma
+interface AggregatedIndicators { volatilidade_anual: number; retorno_anual: number; sharpe: number; }
+interface Scenario { portfolio: any[]; aggregated_indicators: AggregatedIndicators; projections: any[]; }
 interface Study {
   id: string;
   name: string;
@@ -29,23 +22,24 @@ interface Study {
   };
 }
 
-// Props
-interface StudyDetailPageProps {
-  studyId: string;
-}
+// Remove a necessidade de receber props, pois o ID virá da URL
+const StudyDetailPage: React.FC = () => {
+  // Extrai o parâmetro 'id' da URL
+  const { id } = useParams<{ id: string }>();
 
-const StudyDetailPage: React.FC<StudyDetailPageProps> = ({ studyId }) => {
   const [study, setStudy] = useState<Study | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // A função de busca agora usa o 'id' extraído da URL
     const fetchStudyDetails = async () => {
+      if (!id) return; // Se não houver ID, não faz nada
       try {
         setLoading(true);
-        const response = await fetch(`/api/studies/${studyId}`);
+        const response = await fetch(`/api/studies/${id}`);
         if (!response.ok) {
-          throw new Error(`Falha ao buscar detalhes do estudo ${studyId}.`);
+          throw new Error(`Falha ao buscar detalhes do estudo ${id}.`);
         }
         const data: Study = await response.json();
         setStudy(data);
@@ -57,7 +51,7 @@ const StudyDetailPage: React.FC<StudyDetailPageProps> = ({ studyId }) => {
     };
 
     fetchStudyDetails();
-  }, [studyId]);
+  }, [id]); // O useEffect agora depende do 'id' da URL
 
   if (loading) {
     return <div>Carregando detalhes do estudo...</div>;
@@ -71,6 +65,7 @@ const StudyDetailPage: React.FC<StudyDetailPageProps> = ({ studyId }) => {
     return <div>Estudo não encontrado.</div>;
   }
 
+  // O restante do componente permanece o mesmo
   const { current_scenario, new_scenario } = study.analysisResult;
 
   return (
@@ -106,7 +101,6 @@ const StudyDetailPage: React.FC<StudyDetailPageProps> = ({ studyId }) => {
             <StrategyExposureChart portfolio={current_scenario.portfolio} />
           </div>
           <div className="chart-container" style={{ border: '1px solid #ccc', padding: '10px', borderRadius: '8px' }}>
-             {/* Substitui o placeholder pelo velocímetro */}
             <SharpeRatioGauge 
                 currentSharpe={current_scenario.aggregated_indicators.sharpe}
                 newSharpe={new_scenario.aggregated_indicators.sharpe}
